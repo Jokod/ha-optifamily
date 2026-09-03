@@ -208,7 +208,9 @@ automation:
 
 | Option | Défaut | Description |
 |---|---|---|
-| Intervalle de mise à jour | 5 minutes | Entre 1 et 60 minutes |
+| Intervalle de mise à jour | **30 minutes** | Entre 5 et 120 minutes (réglable) |
+
+Capteur diagnostic : `Dernier rafraîchissement` (horodatage du dernier polling réussi + intervalle en attributs).
 
 ---
 

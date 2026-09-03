@@ -1,6 +1,6 @@
 [project]
 name = "ha-optifamily"
-version = "1.0.0"
+version = "1.0.1"
 description = "Intégration Home Assistant non officielle pour optiFamily"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -60,3 +60,4 @@ omit = [
 [tool.coverage.report]
 show_missing = true
 skip_empty = true
+fail_under = 100

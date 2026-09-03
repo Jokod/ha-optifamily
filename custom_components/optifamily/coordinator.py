@@ -20,6 +20,7 @@ from .const import (
     DOMAIN,
     STORAGE_KEY_PREFIX,
     STORAGE_VERSION,
+    clamp_scan_interval,
 )
 from .exceptions import (
     OptieFamilyApiError,
@@ -41,6 +42,7 @@ class OptieFamilyData:
         "facturation",
         "me",
         "messages",
+        "persisted_enfants",
         "plannings",
         "transmissions",
     )
@@ -67,7 +69,9 @@ class OptieFamilyCoordinator(DataUpdateCoordinator[OptieFamilyData]):
         client: OptieFamilyApiClient,
         entry: ConfigEntry,
     ) -> None:
-        scan_interval = entry.options.get("scan_interval", DEFAULT_SCAN_INTERVAL)
+        scan_interval = clamp_scan_interval(
+            entry.options.get("scan_interval", DEFAULT_SCAN_INTERVAL)
+        )
         super().__init__(
             hass,
             _LOGGER,
@@ -76,7 +80,9 @@ class OptieFamilyCoordinator(DataUpdateCoordinator[OptieFamilyData]):
         )
         self.client = client
         self.entry = entry
+        self.scan_interval = scan_interval
         self.known_enfant_ids: set[int] = set()
+        _LOGGER.debug("Intervalle de rafraîchissement OptiFamily : %ss", scan_interval)
         self._store: Store = Store(
             hass,
             STORAGE_VERSION,

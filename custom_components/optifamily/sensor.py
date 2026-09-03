@@ -14,6 +14,7 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -115,6 +116,8 @@ async def async_setup_entry(
     for description in GLOBAL_SENSORS:
         entities.append(OptieFamilyGlobalSensor(coordinator, description, entry))
 
+    entities.append(OptieFamilyLastRefreshSensor(coordinator, entry))
+
     for enfant in _get_enfants(coordinator, entry):
         coordinator.known_enfant_ids.add(enfant.id)
         entities.extend(_build_child_sensors(coordinator, entry, enfant))
@@ -200,6 +203,31 @@ class OptieFamilyGlobalSensor(_OptieFamilyBaseSensor):
         if self.entity_description.attributes_fn:
             return self.entity_description.attributes_fn(self.coordinator.data)
         return None
+
+
+class OptieFamilyLastRefreshSensor(_OptieFamilyBaseSensor):
+    """Horodatage du dernier rafraîchissement API réussi."""
+
+    _attr_name = "Dernier rafraîchissement"
+    _attr_icon = "mdi:clock-check-outline"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: OptieFamilyCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = f"{entry.entry_id}_dernier_rafraichissement"
+
+    @property
+    def native_value(self) -> Any:
+        return self.coordinator.last_update_success
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        interval = getattr(self.coordinator, "scan_interval", None)
+        return {
+            "intervalle_secondes": interval,
+            "intervalle_minutes": (interval // 60) if interval else None,
+        }
 
 
 class _ChildSensor(_OptieFamilyBaseSensor):

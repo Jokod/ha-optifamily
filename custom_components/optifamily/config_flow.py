@@ -34,6 +34,10 @@ from .const import (
     CONF_ENFANTS,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    MAX_SCAN_INTERVAL,
+    MIN_SCAN_INTERVAL,
+    clamp_scan_interval,
+    scan_interval_from_minutes,
 )
 from .exceptions import (
     OptieFamilyAuthError,
@@ -206,21 +210,43 @@ class OptieFamilyConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class OptieFamilyOptionsFlow(OptionsFlow):
-    """Flux d'options : réglage de l'intervalle de mise à jour."""
+    """Flux d'options : réglage de l'intervalle de mise à jour (anti-spam API)."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
-            return self.async_create_entry(data=user_input)
+            return self.async_create_entry(
+                data={
+                    "scan_interval": scan_interval_from_minutes(
+                        user_input["scan_interval_minutes"]
+                    ),
+                }
+            )
 
+        current_seconds = clamp_scan_interval(
+            self.config_entry.options.get("scan_interval", DEFAULT_SCAN_INTERVAL)
+        )
         schema = vol.Schema(
             {
-                vol.Optional(
-                    "scan_interval",
-                    default=self.config_entry.options.get("scan_interval", DEFAULT_SCAN_INTERVAL),
+                vol.Required(
+                    "scan_interval_minutes",
+                    default=current_seconds // 60,
                 ): NumberSelector(
-                    NumberSelectorConfig(min=60, max=3600, step=60, mode=NumberSelectorMode.SLIDER)
+                    NumberSelectorConfig(
+                        min=MIN_SCAN_INTERVAL // 60,
+                        max=MAX_SCAN_INTERVAL // 60,
+                        step=1,
+                        mode=NumberSelectorMode.SLIDER,
+                        unit_of_measurement="min",
+                    )
                 )
             }
         )
 
-        return self.async_show_form(step_id="init", data_schema=schema)
+        return self.async_show_form(
+            step_id="init",
+            data_schema=schema,
+            description_placeholders={
+                "min_minutes": str(MIN_SCAN_INTERVAL // 60),
+                "max_minutes": str(MAX_SCAN_INTERVAL // 60),
+            },
+        )

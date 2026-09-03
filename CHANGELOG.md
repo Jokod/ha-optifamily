@@ -7,12 +7,15 @@ et ce projet adhère au [Versionnement Sémantique](https://semver.org/lang/fr/)
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-09-03
+
+### Fixed
+- Crash au setup : `persisted_enfants` manquant dans `__slots__` de `OptieFamilyData`
+
 ### Added
-- Intégration Home Assistant HACS (lecture seule)
-- Auth pre-login / login / refresh
-- Multi-crèches (multi-instances) et multi-enfants
-- Blueprints d'automatisation et tableau de bord Lovelace
-- Lint Ruff, tests pytest, CI GitHub (hassfest + HACS)
+- Intervalle de polling configurable (défaut 30 min, mini 5, maxi 120)
+- Capteur diagnostic « Dernier rafraîchissement »
+- Coverage tests à 100 %
 
 ## [1.0.0] - 2026-09-03
 

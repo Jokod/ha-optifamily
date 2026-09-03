@@ -360,9 +360,9 @@ class OptieFamilyApiClient:
                 except json_lib.JSONDecodeError as err:
                     raise OptieFamilyApiError(resp.status, "Réponse JSON invalide") from err
 
+        except aiohttp.ServerTimeoutError as err:
+            raise OptieFamilyConnectionError(f"Timeout API OptiFamily : {err}") from err
         except aiohttp.ClientConnectionError as err:
             raise OptieFamilyConnectionError(
                 f"Impossible de contacter l'API OptiFamily : {err}"
             ) from err
-        except aiohttp.ServerTimeoutError as err:
-            raise OptieFamilyConnectionError(f"Timeout API OptiFamily : {err}") from err

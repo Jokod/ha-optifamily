@@ -420,7 +420,7 @@ Persistance HA :
 
 - `creche_id`, `creche_name`, liste `enfants` → config entry
 - tokens → store local par `entry_id`
-- polling défaut : 300 s
+- polling défaut : 1800 s (30 min), mini 300 s, maxi 7200 s
 
 ---
 

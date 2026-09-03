@@ -31,8 +31,9 @@
     "step": {
       "init": {
         "title": "OptiFamily Options",
+        "description": "API polling interval (default 30 min, min {min_minutes} min, max {max_minutes} min) to limit requests.",
         "data": {
-          "scan_interval": "Update interval (seconds)"
+          "scan_interval_minutes": "Update interval"
         }
       }
     }
