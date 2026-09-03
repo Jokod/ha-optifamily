@@ -53,11 +53,20 @@ async def test_calendar_setup_and_events(
     assert family.device_info["name"] == "Crèche"
     assert child.extra_state_attributes["enfant_libelle"] == "Alice"
     assert family.extra_state_attributes["optifamily_kind"] == "planning_family"
+    assert family.entity_id == "calendar.optifamily_planning"
 
     start = datetime.combine(today - timedelta(days=1), datetime.min.time(), tzinfo=UTC)
     end = datetime.combine(today + timedelta(days=2), datetime.min.time(), tzinfo=UTC)
     family_events = await family.async_get_events(hass, start, end)
     child_events = await child.async_get_events(hass, start, end)
+    naive_start = datetime.combine(today - timedelta(days=1), datetime.min.time())
+    naive_end = datetime.combine(today + timedelta(days=2), datetime.min.time())
+    naive_events = await family.async_get_events(hass, naive_start, naive_end)
+    assert naive_events
+    mixed = calendar_mod._aware(datetime(2026, 1, 1, 8, 0))
+    assert mixed.tzinfo is not None
+    already = calendar_mod._aware(datetime(2026, 1, 1, 8, 0, tzinfo=UTC))
+    assert already.tzinfo is UTC
     assert family_events
     assert child_events
     assert family_events[0].summary.startswith("Alice")
@@ -107,3 +116,7 @@ async def test_calendar_setup_and_events(
         == 2026
     )
     assert calendar_mod._event_end(type("E", (), {"end": datetime(2026, 1, 1, 9, 0)})()).hour >= 0
+    first = type("E", (), {"uid": "a", "start": 1, "end": 2, "summary": "x"})()
+    dup = type("E", (), {"uid": "a", "start": 1, "end": 2, "summary": "x"})()
+    other = type("E", (), {"uid": "b", "start": 1, "end": 2, "summary": "y"})()
+    assert len(calendar_mod._dedupe_calendar_events([first, dup, other])) == 2

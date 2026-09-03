@@ -7,6 +7,23 @@ et ce projet adhère au [Versionnement Sémantique](https://semver.org/lang/fr/)
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-09-03
+
+### Added
+- Attribut `optifamily_kind` sur les capteurs Transmissions et Albums (découverte auto dans les tableaux de bord)
+- Dépendance Lovelace documentée : `week-planner-card` (vue Planning)
+
+### Changed
+- Tableaux de bord refondus (FR + EN) en 4 vues : Aujourd’hui, Enfants, Planning (`week-planner-card`), Calendrier (mois)
+- Bandeau Aujourd’hui : textes contextuels selon l’heure (déposer / en crèche / aller chercher / rentré) ; synchro uniquement sur le badge
+- Cartes présence : icônes et libellés alignés sur la phase du créneau
+
+### Fixed
+- Tableaux de bord / package helpers : `selectattr` sur `optifamily_kind` ne plante plus sur les capteurs sans cet attribut (`ReadOnlyDict`)
+- Comparaison de dates naive vs aware (planning 7 jours + calendrier)
+- Calendrier : plus de créneaux en double (semaines API qui se chevauchent / jours hors mois)
+- Entity ID fixe `calendar.optifamily_planning` pour le calendrier famille
+
 ## [1.0.3] - 2026-09-03
 
 ### Added

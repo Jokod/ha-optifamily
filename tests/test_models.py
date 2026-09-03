@@ -125,3 +125,56 @@ def test_planning_to_events(planning_present: dict, planning_absent: dict, today
     }
     events = planning_to_events(bad, "Z")
     assert any(e.summary.endswith("Fermeture") for e in events)
+
+    overlap = {
+        "semaines": [
+            {
+                "journees": [
+                    {
+                        "date": today.isoformat(),
+                        "visible": True,
+                        "creneaux": [{"id": 9, "type": "regulier", "label": "07:45 - 18:45"}],
+                    }
+                ]
+            },
+            {
+                "journees": [
+                    {
+                        "date": today.isoformat(),
+                        "visible": True,
+                        "creneaux": [{"id": 9, "type": "regulier", "label": "07:45 - 18:45"}],
+                    }
+                ]
+            },
+        ]
+    }
+    assert len(planning_to_events(overlap, "Alice")) == 1
+    other_month = {
+        "semaines": [
+            {
+                "journees": [
+                    {
+                        "date": "2026-08-31",
+                        "visible": True,
+                        "creneaux": [{"id": 3, "label": "08:00 - 18:00"}],
+                    }
+                ]
+            }
+        ]
+    }
+    assert planning_to_events(other_month, "A", year=2026, month=9) == []
+    assert planning_to_events(other_month, "A", year=2025, month=8) == []
+    hidden = {
+        "semaines": [
+            {
+                "journees": [
+                    {
+                        "date": today.isoformat(),
+                        "visible": False,
+                        "creneaux": [{"id": 4, "label": "08:00 - 18:00"}],
+                    }
+                ]
+            }
+        ]
+    }
+    assert planning_to_events(hidden, "A") == []

@@ -1,188 +1,539 @@
 # Tableau de bord OptiFamily — français
 #
+# HACS Frontend (manuel) : Mushroom, card-mod, auto-entities, week-planner-card
 # Import : Paramètres → Tableaux de bord → Ajouter → Importer YAML
-# Les cartes retrouvent les capteurs via `optifamily_kind`.
-# Calendrier : calendar.optifamily_planning
+# Les cartes retrouvent les capteurs via l’attribut optifamily_kind.
 
 title: OptiFamily
 views:
-  - title: Famille
-    path: famille
-    icon: mdi:baby-face-outline
+  # ─── Aujourd’hui ───────────────────────────────────────────────
+  - title: Aujourd’hui
+    path: aujourdhui
+    icon: mdi:hand-wave
     type: sections
-    max_columns: 2
+    max_columns: 3
     sections:
       - type: grid
+        column_span: 3
         cards:
-          - type: heading
-            heading: Aujourd'hui
-            heading_style: title
-            icon: mdi:white-balance-sunny
-          - type: markdown
-            content: |
-              {% set _j = ['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche'] %}
-              {% set _m = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'] %}
-              {% set enfants_s = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'enfants') | list %}
-              {% set liste = (enfants_s[0].attributes.liste if enfants_s else []) or [] %}
+          - type: custom:mushroom-template-card
+            layout: horizontal
+            multiline_secondary: true
+            tap_action:
+              action: none
+            card_mod:
+              style: |
+                ha-card {
+                  border-radius: 28px;
+                  border: none;
+                  box-shadow: none;
+                  padding: 4px 2px;
+                  background: linear-gradient(
+                    125deg,
+                    rgba(245,158,11,.26) 0%,
+                    rgba(13,148,136,.20) 48%,
+                    rgba(59,130,246,.12) 100%
+                  );
+                }
+            icon: >
+              {% set h = now().hour %}
+              {% if h < 6 %}mdi:weather-night
+              {% elif h < 12 %}mdi:weather-sunset-up
+              {% elif h < 18 %}mdi:white-balance-sunny
+              {% else %}mdi:weather-sunset
+              {% endif %}
+            icon_color: >
+              {% set h = now().hour %}
+              {% if h < 6 %}indigo
+              {% elif h < 12 %}amber
+              {% elif h < 18 %}orange
+              {% else %}deep-orange
+              {% endif %}
+            primary: >
+              {% set h = now().hour %}
+              {% set j = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'] %}
+              {% set m = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'] %}
+              {% if h < 6 %}Bonne nuit
+              {% elif h < 12 %}Bonjour
+              {% elif h < 18 %}Bon après-midi
+              {% else %}Bonsoir
+              {% endif %} · {{ j[now().weekday()] }} {{ now().day }} {{ m[now().month - 1] }}
+            secondary: >
+              {% set s = states.sensor
+                | selectattr('attributes', 'contains', 'optifamily_kind')
+                | selectattr('attributes.optifamily_kind', 'eq', 'enfants') | list %}
+              {% set liste = (s[0].attributes.liste if s else []) or [] %}
               {% set presents = liste | selectattr('presence', 'equalto', 'présent') | list %}
-              {% set msg_c = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'messages_unread_creche') | list %}
-              {% set msg_m = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'messages_unread_me') | list %}
-              {% set nc = (msg_c[0].state | int(0)) if msg_c else 0 %}
-              {% set nm = (msg_m[0].state | int(0)) if msg_m else 0 %}
-              {% set sync = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'dernier_rafraichissement') | list %}
-
-              ### {{ _j[now().weekday()] | capitalize }} {{ now().day }} {{ _m[now().month - 1] }} {{ now().year }}
-
-              {% if liste | length == 0 %}
-              *Intégration OptiFamily introuvable ou aucun enfant.*
-              {% elif presents | length == liste | length and liste | length > 0 %}
-              Toute la fratrie est **en crèche** aujourd'hui.
+              {% set n = liste | length %}
+              {% if n == 0 %}Intégration introuvable ou aucun enfant configuré.
               {% elif presents | length == 0 %}
-              Personne n'est prévu en crèche aujourd'hui.
+                {% if n == 1 %}{{ liste[0].libelle }} est à la maison aujourd’hui.
+                {% else %}Journée à la maison — personne en crèche.
+                {% endif %}
               {% else %}
-              **{{ presents | length }}** / **{{ liste | length }}** en crèche
-              — {{ presents | map(attribute='libelle') | join(', ') }}
+                {% set ns = namespace(drop=none, pick=none, mid=[], done=[]) %}
+                {% for e in presents %}
+                  {% set label = (e.creneaux[0] if e.creneaux else '') %}
+                  {% set times = (label or '') | regex_findall('(\\d{1,2}):(\\d{2})') %}
+                  {% if times | length >= 2 %}
+                    {% set start = today_at(times[0][0] ~ ':' ~ times[0][1]) %}
+                    {% set end = today_at(times[1][0] ~ ':' ~ times[1][1]) %}
+                    {% set to_start = ((as_timestamp(start) - as_timestamp(now())) / 60) | round(0, 'floor') | int %}
+                    {% set to_end = ((as_timestamp(end) - as_timestamp(now())) / 60) | round(0, 'floor') | int %}
+                    {% if to_start > 0 %}
+                      {% if ns.drop is none or to_start < ns.drop.mins %}
+                        {% set ns.drop = {'name': e.libelle, 'mins': to_start, 'at': times[0][0] ~ ':' ~ times[0][1]} %}
+                      {% endif %}
+                    {% elif to_end > 0 %}
+                      {% set ns.mid = ns.mid + [e.libelle] %}
+                      {% if ns.pick is none or to_end < ns.pick.mins %}
+                        {% set ns.pick = {'name': e.libelle, 'mins': to_end, 'at': times[1][0] ~ ':' ~ times[1][1]} %}
+                      {% endif %}
+                    {% else %}
+                      {% set ns.done = ns.done + [e.libelle] %}
+                    {% endif %}
+                  {% else %}
+                    {% set ns.mid = ns.mid + [e.libelle] %}
+                  {% endif %}
+                {% endfor %}
+                {% if ns.drop %}
+                  {% set m = ns.drop.mins %}
+                  {% if m > 90 %}Allez déposer {{ ns.drop.name }} à {{ ns.drop.at }}.
+                  {% elif m >= 60 %}Allez déposer {{ ns.drop.name }} dans {{ m // 60 }} h{% if m % 60 %} {{ m % 60 }} min{% endif %}.
+                  {% else %}Allez déposer {{ ns.drop.name }} dans {{ m }} min.
+                  {% endif %}
+                {% elif ns.pick and ns.pick.mins <= 90 %}
+                  {% set m = ns.pick.mins %}
+                  {% if m >= 60 %}Allez chercher {{ ns.pick.name }} dans {{ m // 60 }} h{% if m % 60 %} {{ m % 60 }} min{% endif %}.
+                  {% else %}Allez chercher {{ ns.pick.name }} dans {{ m }} min.
+                  {% endif %}
+                {% elif ns.mid %}
+                  {{ ns.mid | join(', ') }} en crèche{% if ns.pick %} · récupération à {{ ns.pick.at }}{% endif %}.
+                {% elif ns.done | length == 1 %}
+                  {{ ns.done[0] }} est rentré·e.
+                {% elif ns.done %}
+                  Tout le monde est rentré.
+                {% else %}
+                  {{ presents | map(attribute='libelle') | join(', ') }} en crèche.
+                {% endif %}
               {% endif %}
 
-              {% if nc > 0 or nm > 0 %}
-
-              ---
-              {% if nc > 0 %}Message{{ 's' if nc > 1 }} de la crèche : **{{ nc }}** non lu{{ 's' if nc > 1 }}{% endif %}
-              {% if nc > 0 and nm > 0 %} · {% endif %}
-              {% if nm > 0 %}Envoyé{{ 's' if nm > 1 }} non lu{{ 's' if nm > 1 }} : **{{ nm }}**{% endif %}
-              {% endif %}
-              {% if sync %}
-
-              *Màj {{ relative_time(as_datetime(sync[0].state)) if sync[0].state not in ['unknown', 'unavailable', none] else '—'}} · toutes les {{ sync[0].attributes.intervalle_minutes | default('?') }} min*
-              {% endif %}
+      - type: grid
+        column_span: 3
+        cards:
+          - type: custom:mushroom-chips-card
+            alignment: center
+            card_mod:
+              style: |
+                ha-card {
+                  border: none;
+                  box-shadow: none;
+                  background: transparent;
+                }
+            chips:
+              - type: template
+                icon: mdi:baby-carriage
+                icon_color: >
+                  {% set p = states.sensor
+                    | selectattr('attributes', 'contains', 'optifamily_kind')
+                    | selectattr('attributes.optifamily_kind', 'eq', 'enfants_presents') | list %}
+                  {{ 'teal' if p and p[0].state | int(0) > 0 else 'blue-grey' }}
+                content: >
+                  {% set p = states.sensor
+                    | selectattr('attributes', 'contains', 'optifamily_kind')
+                    | selectattr('attributes.optifamily_kind', 'eq', 'enfants_presents') | list %}
+                  {% set n = (p[0].state | int(0)) if p else 0 %}
+                  {% if n == 0 %}Aucun en crèche
+                  {% elif n == 1 %}1 en crèche
+                  {% else %}{{ n }} en crèche
+                  {% endif %}
+              - type: template
+                icon: mdi:email-receive-outline
+                icon_color: >
+                  {% set m = states.sensor
+                    | selectattr('attributes', 'contains', 'optifamily_kind')
+                    | selectattr('attributes.optifamily_kind', 'eq', 'messages_unread_creche') | list %}
+                  {{ 'red' if m and m[0].state | int(0) > 0 else 'teal' }}
+                content: >
+                  {% set m = states.sensor
+                    | selectattr('attributes', 'contains', 'optifamily_kind')
+                    | selectattr('attributes.optifamily_kind', 'eq', 'messages_unread_creche') | list %}
+                  {% set n = (m[0].state | int(0)) if m else 0 %}
+                  {% if n == 0 %}Boîte à jour
+                  {% else %}{{ n }} message{{ 's' if n != 1 }} crèche
+                  {% endif %}
+              - type: template
+                icon: mdi:clock-check-outline
+                icon_color: cyan
+                content: >
+                  {% set sync = states.sensor
+                    | selectattr('attributes', 'contains', 'optifamily_kind')
+                    | selectattr('attributes.optifamily_kind', 'eq', 'dernier_rafraichissement') | list %}
+                  {% if sync and sync[0].state not in ['unknown', 'unavailable', none] %}
+                    Mis à jour {{ relative_time(as_datetime(sync[0].state)) }}
+                  {% else %}Synchro inconnue
+                  {% endif %}
 
       - type: grid
         cards:
           - type: heading
-            heading: Enfants
+            heading: Présence du jour
             heading_style: title
-            icon: mdi:human-male-female-child
-          - type: markdown
-            content: |
-              {% set enfants_s = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'enfants') | list %}
-              {% set liste = (enfants_s[0].attributes.liste if enfants_s else []) or [] %}
-              {% if liste | length == 0 %}
-              *Aucun enfant détecté.*
-              {% else %}
-              {% for e in liste %}
-              {% if not loop.first %}
-
-              ---
-              {% endif %}
-              ### {% if e.presence == 'présent' %}🟢{% elif e.presence == 'absent' %}⚪{% else %}❓{% endif %} {{ e.libelle }}
-
-              **{{ e.presence | capitalize }}**{% if e.creneaux %} · {{ e.creneaux | join(' · ') }}{% endif %}
-              {% set extras = (e.creneaux_detail or []) | rejectattr('type', 'equalto', 'regulier') | list %}
-              {% if extras %}
-
-              {% for c in extras %}
-              _{% if c.type == 'fermeture' %}Fermeture{% else %}{{ c.type }}{% endif %}{% if c.label %} — {{ c.label }}{% endif %}{% if c.details %} ({{ c.details }}){% endif %}_
-              {% endfor %}
-              {% endif %}
-
-              | Transmissions | Albums | Créneaux ce mois |
-              | :---: | :---: | :---: |
-              | {{ e.transmissions | default(0) }} | {{ e.albums | default(0) }} | {{ e.creneaux_mois | default(0) }} |
-              {% endfor %}
-              {% endif %}
+            icon: mdi:account-child
+          - type: custom:auto-entities
+            show_empty: false
+            unique: entity_id
+            sort:
+              method: attribute
+              attribute: enfant_libelle
+            card:
+              type: vertical-stack
+            card_param: cards
+            filter:
+              exclude:
+                - state: unavailable
+              include:
+                - attributes:
+                    optifamily_kind: present
+                  options:
+                    type: custom:mushroom-template-card
+                    entity: this.entity_id
+                    layout: horizontal
+                    multiline_secondary: true
+                    tap_action:
+                      action: more-info
+                    card_mod:
+                      style: |
+                        ha-card {
+                          border-radius: 22px;
+                          border: none;
+                          box-shadow: none;
+                        }
+                    icon: >
+                      {% set st = states(entity) %}
+                      {% set label = (state_attr(entity, 'creneaux') or [state_attr(entity, 'creneaux_libelle') or ''])[0] %}
+                      {% set times = (label or '') | regex_findall('(\\d{1,2}):(\\d{2})') %}
+                      {% if st == 'absent' %}mdi:home-heart
+                      {% elif st != 'présent' %}mdi:help-circle-outline
+                      {% elif times | length < 2 %}mdi:baby-face-outline
+                      {% else %}
+                        {% set start = today_at(times[0][0] ~ ':' ~ times[0][1]) %}
+                        {% set end = today_at(times[1][0] ~ ':' ~ times[1][1]) %}
+                        {% set to_start = ((as_timestamp(start) - as_timestamp(now())) / 60) | round(0, 'floor') | int %}
+                        {% set to_end = ((as_timestamp(end) - as_timestamp(now())) / 60) | round(0, 'floor') | int %}
+                        {% if to_start > 0 %}mdi:car-child-seat
+                        {% elif to_end > 90 %}mdi:baby-face-outline
+                        {% elif to_end > 0 %}mdi:clock-end
+                        {% else %}mdi:home-import-outline
+                        {% endif %}
+                      {% endif %}
+                    icon_color: >
+                      {% set st = states(entity) %}
+                      {% set label = (state_attr(entity, 'creneaux') or [state_attr(entity, 'creneaux_libelle') or ''])[0] %}
+                      {% set times = (label or '') | regex_findall('(\\d{1,2}):(\\d{2})') %}
+                      {% if st == 'absent' %}blue-grey
+                      {% elif st != 'présent' %}amber
+                      {% elif times | length < 2 %}teal
+                      {% else %}
+                        {% set start = today_at(times[0][0] ~ ':' ~ times[0][1]) %}
+                        {% set end = today_at(times[1][0] ~ ':' ~ times[1][1]) %}
+                        {% set to_start = ((as_timestamp(start) - as_timestamp(now())) / 60) | round(0, 'floor') | int %}
+                        {% set to_end = ((as_timestamp(end) - as_timestamp(now())) / 60) | round(0, 'floor') | int %}
+                        {% if to_start > 0 %}amber
+                        {% elif to_end > 90 %}teal
+                        {% elif to_end > 0 %}orange
+                        {% else %}blue-grey
+                        {% endif %}
+                      {% endif %}
+                    badge_icon: >
+                      {% set st = states(entity) %}
+                      {% set label = (state_attr(entity, 'creneaux') or [state_attr(entity, 'creneaux_libelle') or ''])[0] %}
+                      {% set times = (label or '') | regex_findall('(\\d{1,2}):(\\d{2})') %}
+                      {% if st == 'absent' %}mdi:home
+                      {% elif st != 'présent' %}mdi:alert-circle-outline
+                      {% elif times | length < 2 %}mdi:check-circle
+                      {% else %}
+                        {% set start = today_at(times[0][0] ~ ':' ~ times[0][1]) %}
+                        {% set end = today_at(times[1][0] ~ ':' ~ times[1][1]) %}
+                        {% set to_start = ((as_timestamp(start) - as_timestamp(now())) / 60) | round(0, 'floor') | int %}
+                        {% set to_end = ((as_timestamp(end) - as_timestamp(now())) / 60) | round(0, 'floor') | int %}
+                        {% if to_start > 0 %}mdi:arrow-right-bold-circle
+                        {% elif to_end > 90 %}mdi:check-circle
+                        {% elif to_end > 0 %}mdi:bell-ring
+                        {% else %}mdi:home
+                        {% endif %}
+                      {% endif %}
+                    badge_color: >
+                      {% set st = states(entity) %}
+                      {% set label = (state_attr(entity, 'creneaux') or [state_attr(entity, 'creneaux_libelle') or ''])[0] %}
+                      {% set times = (label or '') | regex_findall('(\\d{1,2}):(\\d{2})') %}
+                      {% if st == 'absent' %}grey
+                      {% elif st != 'présent' %}amber
+                      {% elif times | length < 2 %}teal
+                      {% else %}
+                        {% set start = today_at(times[0][0] ~ ':' ~ times[0][1]) %}
+                        {% set end = today_at(times[1][0] ~ ':' ~ times[1][1]) %}
+                        {% set to_start = ((as_timestamp(start) - as_timestamp(now())) / 60) | round(0, 'floor') | int %}
+                        {% set to_end = ((as_timestamp(end) - as_timestamp(now())) / 60) | round(0, 'floor') | int %}
+                        {% if to_start > 0 %}amber
+                        {% elif to_end > 90 %}teal
+                        {% elif to_end > 0 %}orange
+                        {% else %}grey
+                        {% endif %}
+                      {% endif %}
+                    primary: "{{ state_attr(entity, 'enfant_libelle') }}"
+                    secondary: >
+                      {% set st = states(entity) %}
+                      {% set name = state_attr(entity, 'enfant_libelle') %}
+                      {% set label = (state_attr(entity, 'creneaux') or [state_attr(entity, 'creneaux_libelle') or ''])[0] %}
+                      {% set times = (label or '') | regex_findall('(\\d{1,2}):(\\d{2})') %}
+                      {% if st == 'absent' %}{{ name }} est à la maison
+                      {% elif st != 'présent' %}Présence non confirmée
+                      {% elif times | length < 2 %}{{ name }} est en crèche
+                      {% else %}
+                        {% set start = today_at(times[0][0] ~ ':' ~ times[0][1]) %}
+                        {% set end = today_at(times[1][0] ~ ':' ~ times[1][1]) %}
+                        {% set to_start = ((as_timestamp(start) - as_timestamp(now())) / 60) | round(0, 'floor') | int %}
+                        {% set to_end = ((as_timestamp(end) - as_timestamp(now())) / 60) | round(0, 'floor') | int %}
+                        {% if to_start > 90 %}Allez déposer {{ name }} à {{ times[0][0] }}:{{ times[0][1] }}
+                        {% elif to_start > 0 %}Allez déposer {{ name }} {% if to_start >= 60 %}dans {{ to_start // 60 }} h{% if to_start % 60 %} {{ to_start % 60 }} min{% endif %}{% else %}dans {{ to_start }} min{% endif %}
+                        {% elif to_end > 90 %}En crèche · allez chercher à {{ times[1][0] }}:{{ times[1][1] }}
+                        {% elif to_end > 0 %}Allez chercher {{ name }} {% if to_end >= 60 %}dans {{ to_end // 60 }} h{% if to_end % 60 %} {{ to_end % 60 }} min{% endif %}{% else %}dans {{ to_end }} min{% endif %}
+                        {% else %}{{ name }} est rentré·e
+                        {% endif %}
+                      {% endif %}
 
       - type: grid
         cards:
           - type: heading
-            heading: Messages
+            heading: Boîte aux lettres
             heading_style: title
-            icon: mdi:message-text-outline
-          - type: markdown
-            content: |
-              {% set msg_c = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'messages_unread_creche') | list %}
-              {% set msg_m = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'messages_unread_me') | list %}
-              {% set c = msg_c[0] if msg_c else none %}
-              {% set m = msg_m[0] if msg_m else none %}
-              {% set nc = c.state | int(0) if c else 0 %}
-              {% set nm = m.state | int(0) if m else 0 %}
-
-              {% if not c and not m %}
-              *Capteurs messages introuvables.*
-              {% elif nc == 0 and nm == 0 %}
-              Aucun message en attente.
-              {% else %}
-              {% if nc > 0 %}
-              #### De la crèche
-              **{{ nc }}** non lu{{ 's' if nc > 1 }} / {{ c.attributes.total | default('?') }} au total
-              {% set d = as_datetime(c.attributes.last_unread_date) if c.attributes.last_unread_date else none %}
-              {% if d %}Dernier : {{ d.strftime('%d/%m à %H:%M') }}{% endif %}
-              {% endif %}
-              {% if nm > 0 %}
-              #### Envoyés (moi)
-              **{{ nm }}** encore non lu{{ 's' if nm > 1 }} / {{ m.attributes.total | default('?') }} au total
-              {% set d = as_datetime(m.attributes.last_unread_date) if m.attributes.last_unread_date else none %}
-              {% if d %}Dernier : {{ d.strftime('%d/%m à %H:%M') }}{% endif %}
-              {% endif %}
-              {% endif %}
+            icon: mdi:mailbox-open-outline
+          - type: custom:auto-entities
+            show_empty: false
+            unique: entity_id
+            card:
+              type: vertical-stack
+            card_param: cards
+            filter:
+              include:
+                - attributes:
+                    optifamily_kind: messages_unread_creche
+                  options:
+                    type: custom:mushroom-template-card
+                    entity: this.entity_id
+                    icon: mdi:email-receive
+                    layout: horizontal
+                    multiline_secondary: true
+                    tap_action:
+                      action: more-info
+                    card_mod:
+                      style: |
+                        ha-card { border-radius: 22px; border: none; box-shadow: none; }
+                    primary: De la crèche
+                    secondary: >
+                      {% set n = states(entity) | int(0) %}
+                      {% set total = state_attr(entity, 'total') %}
+                      {% if n == 0 %}Aucun message non lu
+                      {% else %}{{ n }} non lu{{ 's' if n != 1 }}{% if total is not none %} · {{ total }} au total{% endif %}
+                      {% endif %}
+                      {% set d = state_attr(entity, 'last_unread_date') or state_attr(entity, 'last_message_date') %}
+                      {% if d %} · {{ d }}{% endif %}
+                    icon_color: "{{ 'red' if states(entity) | int(0) > 0 else 'teal' }}"
+                    badge_icon: "{{ 'mdi:bell-badge' if states(entity) | int(0) > 0 else none }}"
+                    badge_color: red
+                - attributes:
+                    optifamily_kind: messages_unread_me
+                  options:
+                    type: custom:mushroom-template-card
+                    entity: this.entity_id
+                    icon: mdi:email-send
+                    layout: horizontal
+                    multiline_secondary: true
+                    tap_action:
+                      action: more-info
+                    card_mod:
+                      style: |
+                        ha-card { border-radius: 22px; border: none; box-shadow: none; }
+                    primary: Vos envois
+                    secondary: >
+                      {% set n = states(entity) | int(0) %}
+                      {% set total = state_attr(entity, 'total') %}
+                      {% if n == 0 %}Rien en attente de lecture
+                      {% else %}{{ n }} non lu{{ 's' if n != 1 }} côté crèche{% if total is not none %} · {{ total }} envoyé{{ 's' if total != 1 }}{% endif %}
+                      {% endif %}
+                    icon_color: "{{ 'orange' if states(entity) | int(0) > 0 else 'teal' }}"
+                    badge_icon: "{{ 'mdi:bell-badge' if states(entity) | int(0) > 0 else none }}"
+                    badge_color: orange
 
       - type: grid
         cards:
           - type: heading
-            heading: Compte
+            heading: Vie de la crèche
             heading_style: title
-            icon: mdi:office-building-outline
-          - type: markdown
-            content: |
-              {% set actus = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'actualites_total') | list %}
-              {% set docs = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'documents_total') | list %}
-              {% set fact = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'facturation_total') | list %}
-              {% set sync = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'dernier_rafraichissement') | list %}
-
-              | Actualités | Documents | Factures |
-              | :---: | :---: | :---: |
-              | {{ actus[0].state if actus else '—' }} | {{ docs[0].state if docs else '—' }} | {{ fact[0].state if fact else '—' }} |
-
-              {% if sync and sync[0].state not in ['unknown', 'unavailable', none] %}
-              Dernier rafraîchissement : **{{ as_datetime(sync[0].state).strftime('%d/%m à %H:%M') }}**
-              (toutes les **{{ sync[0].attributes.intervalle_minutes | default('?') }}** min)
-              {% endif %}
+            icon: mdi:town-hall
+          - type: custom:auto-entities
+            show_empty: false
+            unique: entity_id
+            card:
+              type: vertical-stack
+            card_param: cards
+            filter:
+              include:
+                - attributes:
+                    optifamily_kind: actualites_total
+                  options:
+                    type: custom:mushroom-template-card
+                    entity: this.entity_id
+                    icon: mdi:newspaper-variant-outline
+                    icon_color: teal
+                    layout: horizontal
+                    tap_action:
+                      action: more-info
+                    card_mod:
+                      style: |
+                        ha-card { border-radius: 22px; border: none; box-shadow: none; }
+                    primary: Actualités
+                    secondary: >
+                      {% set n = states(entity) | int(0) %}
+                      {% if n == 0 %}Aucune actualité
+                      {% elif n == 1 %}1 actualité
+                      {% else %}{{ n }} actualités
+                      {% endif %}
+                - attributes:
+                    optifamily_kind: documents_total
+                  options:
+                    type: custom:mushroom-template-card
+                    entity: this.entity_id
+                    icon: mdi:file-document-outline
+                    icon_color: cyan
+                    layout: horizontal
+                    tap_action:
+                      action: more-info
+                    card_mod:
+                      style: |
+                        ha-card { border-radius: 22px; border: none; box-shadow: none; }
+                    primary: Documents
+                    secondary: >
+                      {% set n = states(entity) | int(0) %}
+                      {% if n == 0 %}Aucun document
+                      {% elif n == 1 %}1 document
+                      {% else %}{{ n }} documents
+                      {% endif %}
+                - attributes:
+                    optifamily_kind: facturation_total
+                  options:
+                    type: custom:mushroom-template-card
+                    entity: this.entity_id
+                    icon: mdi:receipt-text-outline
+                    icon_color: amber
+                    layout: horizontal
+                    tap_action:
+                      action: more-info
+                    card_mod:
+                      style: |
+                        ha-card { border-radius: 22px; border: none; box-shadow: none; }
+                    primary: Factures
+                    secondary: >
+                      {% set n = states(entity) | int(0) %}
+                      {% if n == 0 %}Aucune facture
+                      {% elif n == 1 %}1 facture
+                      {% else %}{{ n }} factures
+                      {% endif %}
 
       - type: grid
-        column_span: 2
+        column_span: 3
         cards:
           - type: heading
-            heading: 7 prochains jours
+            heading: Aperçu des 7 prochains jours
             heading_style: title
             icon: mdi:calendar-week
           - type: markdown
             content: |
-              {% set _j = ['lun.','mar.','mer.','jeu.','ven.','sam.','dim.'] %}
-              {% set slots = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'planning_slots') | list %}
-              {% set start = now().replace(hour=0, minute=0, second=0, microsecond=0) %}
-              {% set end = start + timedelta(days=7) %}
-              {% if slots | length == 0 %}
-              *Planning du mois non disponible.*
-              {% else %}
+              {% set jn = ['lun.','mar.','mer.','jeu.','ven.','sam.','dim.'] %}
+              {% set slots = states.sensor
+                | selectattr('attributes', 'contains', 'optifamily_kind')
+                | selectattr('attributes.optifamily_kind', 'eq', 'planning_slots') | list %}
+              {% set start = now().date() %}
+              <div class="of-week">
+              {% for i in range(7) %}
+              {% set day = start + timedelta(days=i) %}
+              {% set bits = namespace(items=[]) %}
               {% for s in slots %}
-              **{{ s.attributes.enfant_libelle or s.name }}**
-              {% set rows = namespace(n=0) %}
-              {% for j in s.attributes.jours or [] %}
-              {% set jd = as_datetime(j.date) if j.date else none %}
-              {% if jd and jd >= start and jd < end %}
-              {% set rows.n = rows.n + 1 %}
-              - **{{ _j[jd.weekday()] }} {{ jd.strftime('%d/%m') }}** — {{ j.creneaux | join(' · ') }}
+              {% for row in s.attributes.jours or [] %}
+              {% set raw = as_datetime(row.date) if row.date else none %}
+              {% set jd = raw.date() if raw else none %}
+              {% if jd == day %}
+              {% set bits.items = bits.items + [ (s.attributes.enfant_libelle or 'Enfant') ~ ' · ' ~ (row.creneaux | join(' · ')) ] %}
               {% endif %}
               {% endfor %}
-              {% if rows.n == 0 %}
-              _Aucun créneau sur 7 jours._
-              {% endif %}
-
               {% endfor %}
-              {% endif %}
+              <div class="of-day{% if i == 0 %} of-today{% endif %}{% if day.weekday() >= 5 %} of-weekend{% endif %}{% if bits.items | length == 0 %} of-empty{% endif %}">
+              <div class="of-kicker">{{ jn[day.weekday()] }}</div>
+              <div class="of-num">{{ day.day }}</div>
+              <div class="of-body">{% if bits.items %}{% for line in bits.items %}<div class="of-line">{{ line }}</div>{% endfor %}{% else %}<div class="of-libre">Libre</div>{% endif %}</div>
+              </div>
+              {% endfor %}
+              </div>
+            card_mod:
+              style:
+                .: |
+                  ha-card {
+                    border-radius: 24px;
+                    border: none;
+                    box-shadow: none;
+                    overflow: hidden;
+                  }
+                ha-markdown:
+                  $: |
+                    .of-week {
+                      display: grid;
+                      grid-template-columns: repeat(7, minmax(0, 1fr));
+                      gap: 10px;
+                    }
+                    @media (max-width: 1100px) {
+                      .of-week { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+                    }
+                    @media (max-width: 700px) {
+                      .of-week { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+                    }
+                    .of-day {
+                      border-radius: 18px;
+                      padding: 12px 10px 14px;
+                      min-height: 8.75rem;
+                      background: color-mix(in srgb, var(--primary-color) 8%, var(--ha-card-background, var(--card-background-color)));
+                      transition: opacity .15s ease;
+                    }
+                    .of-today {
+                      background: color-mix(in srgb, #0d9488 24%, var(--ha-card-background, var(--card-background-color)));
+                      box-shadow: inset 0 0 0 2px #0d9488;
+                    }
+                    .of-weekend {
+                      background: color-mix(in srgb, var(--primary-color) 4%, var(--ha-card-background, var(--card-background-color)));
+                    }
+                    .of-empty { opacity: 0.7; }
+                    .of-kicker {
+                      font-size: 0.68rem;
+                      letter-spacing: 0.1em;
+                      text-transform: uppercase;
+                      opacity: 0.65;
+                      font-weight: 600;
+                    }
+                    .of-num {
+                      font-size: 1.7rem;
+                      font-weight: 750;
+                      line-height: 1.1;
+                      margin: 4px 0 10px;
+                      letter-spacing: -0.02em;
+                    }
+                    .of-body { font-size: 0.76rem; line-height: 1.4; }
+                    .of-line + .of-line { margin-top: 4px; }
+                    .of-libre { opacity: 0.42; font-style: italic; }
 
-  - title: Planning
-    path: planning
-    icon: mdi:calendar-month
+  # ─── Enfants ───────────────────────────────────────────────────
+  - title: Enfants
+    path: enfants
+    icon: mdi:account-child-circle
     type: sections
     max_columns: 2
     sections:
@@ -190,49 +541,316 @@ views:
         column_span: 2
         cards:
           - type: heading
-            heading: Calendrier
+            heading: Fiches individuelles
             heading_style: title
-            icon: mdi:calendar-clock
-          - type: calendar
-            initial_view: dayGridMonth
-            entities:
-              - calendar.optifamily_planning
+            icon: mdi:card-account-details-outline
           - type: markdown
-            content: |
-              Flèches du calendrier = changement de mois (1 appel API par mois, puis cache).
-              {% set cals = states.calendar | selectattr('attributes.optifamily_kind', 'eq', 'planning') | list %}
-              {% if cals %}
-              Par enfant : {{ cals | map(attribute='entity_id') | join(', ') }}
+            content: >
+              {% set s = states.sensor
+                | selectattr('attributes', 'contains', 'optifamily_kind')
+                | selectattr('attributes.optifamily_kind', 'eq', 'enfants') | list %}
+              {% set n = (s[0].state | int(0)) if s else 0 %}
+              {% if n == 0 %}Aucun enfant détecté.
+              {% elif n == 1 %}1 enfant suivi·e — présence, transmissions, albums et créneaux.
+              {% else %}{{ n }} enfants suivis — présence, transmissions, albums et créneaux.
               {% endif %}
+            card_mod:
+              style: |
+                ha-card {
+                  border: none;
+                  box-shadow: none;
+                  background: transparent;
+                  --ha-markdown-font-size: 0.9rem;
+                  opacity: 0.75;
+                }
 
       - type: grid
         column_span: 2
         cards:
+          - type: custom:auto-entities
+            show_empty: false
+            unique: entity_id
+            sort:
+              method: attribute
+              attribute: enfant_libelle
+            card:
+              type: vertical-stack
+            card_param: cards
+            filter:
+              exclude:
+                - state: unavailable
+              include:
+                - attributes:
+                    optifamily_kind: present
+                  options:
+                    type: vertical-stack
+                    cards:
+                      - type: custom:mushroom-template-card
+                        entity: this.entity_id
+                        layout: horizontal
+                        multiline_secondary: true
+                        tap_action:
+                          action: more-info
+                        card_mod:
+                          style: |
+                            ha-card {
+                              border-radius: 24px 24px 8px 8px;
+                              border: none;
+                              box-shadow: none;
+                              background: linear-gradient(
+                                120deg,
+                                color-mix(in srgb, #0d9488 16%, var(--ha-card-background, var(--card-background-color))),
+                                var(--ha-card-background, var(--card-background-color))
+                              );
+                            }
+                        icon: >
+                          {% set st = states(entity) %}
+                          {% set label = (state_attr(entity, 'creneaux') or [state_attr(entity, 'creneaux_libelle') or ''])[0] %}
+                          {% set times = (label or '') | regex_findall('(\\d{1,2}):(\\d{2})') %}
+                          {% if st == 'absent' %}mdi:home-heart
+                          {% elif st != 'présent' %}mdi:help-circle-outline
+                          {% elif times | length < 2 %}mdi:baby-face-outline
+                          {% else %}
+                            {% set start = today_at(times[0][0] ~ ':' ~ times[0][1]) %}
+                            {% set end = today_at(times[1][0] ~ ':' ~ times[1][1]) %}
+                            {% set to_start = ((as_timestamp(start) - as_timestamp(now())) / 60) | round(0, 'floor') | int %}
+                            {% set to_end = ((as_timestamp(end) - as_timestamp(now())) / 60) | round(0, 'floor') | int %}
+                            {% if to_start > 0 %}mdi:car-child-seat
+                            {% elif to_end > 90 %}mdi:baby-face-outline
+                            {% elif to_end > 0 %}mdi:clock-end
+                            {% else %}mdi:home-import-outline
+                            {% endif %}
+                          {% endif %}
+                        icon_color: >
+                          {% set st = states(entity) %}
+                          {% set label = (state_attr(entity, 'creneaux') or [state_attr(entity, 'creneaux_libelle') or ''])[0] %}
+                          {% set times = (label or '') | regex_findall('(\\d{1,2}):(\\d{2})') %}
+                          {% if st == 'absent' %}blue-grey
+                          {% elif st != 'présent' %}amber
+                          {% elif times | length < 2 %}teal
+                          {% else %}
+                            {% set start = today_at(times[0][0] ~ ':' ~ times[0][1]) %}
+                            {% set end = today_at(times[1][0] ~ ':' ~ times[1][1]) %}
+                            {% set to_start = ((as_timestamp(start) - as_timestamp(now())) / 60) | round(0, 'floor') | int %}
+                            {% set to_end = ((as_timestamp(end) - as_timestamp(now())) / 60) | round(0, 'floor') | int %}
+                            {% if to_start > 0 %}amber
+                            {% elif to_end > 90 %}teal
+                            {% elif to_end > 0 %}orange
+                            {% else %}blue-grey
+                            {% endif %}
+                          {% endif %}
+                        primary: "{{ state_attr(entity, 'enfant_libelle') }}"
+                        secondary: >
+                          {% set st = states(entity) %}
+                          {% set name = state_attr(entity, 'enfant_libelle') %}
+                          {% set label = (state_attr(entity, 'creneaux') or [state_attr(entity, 'creneaux_libelle') or ''])[0] %}
+                          {% set times = (label or '') | regex_findall('(\\d{1,2}):(\\d{2})') %}
+                          {% if st == 'absent' %}{{ name }} est à la maison
+                          {% elif st != 'présent' %}Statut du jour inconnu
+                          {% elif times | length < 2 %}{{ name }} est en crèche
+                          {% else %}
+                            {% set start = today_at(times[0][0] ~ ':' ~ times[0][1]) %}
+                            {% set end = today_at(times[1][0] ~ ':' ~ times[1][1]) %}
+                            {% set to_start = ((as_timestamp(start) - as_timestamp(now())) / 60) | round(0, 'floor') | int %}
+                            {% set to_end = ((as_timestamp(end) - as_timestamp(now())) / 60) | round(0, 'floor') | int %}
+                            {% if to_start > 90 %}Allez déposer {{ name }} à {{ times[0][0] }}:{{ times[0][1] }}
+                            {% elif to_start > 0 %}Allez déposer {{ name }} {% if to_start >= 60 %}dans {{ to_start // 60 }} h{% if to_start % 60 %} {{ to_start % 60 }} min{% endif %}{% else %}dans {{ to_start }} min{% endif %}
+                            {% elif to_end > 90 %}En crèche · allez chercher à {{ times[1][0] }}:{{ times[1][1] }}
+                            {% elif to_end > 0 %}Allez chercher {{ name }} {% if to_end >= 60 %}dans {{ to_end // 60 }} h{% if to_end % 60 %} {{ to_end % 60 }} min{% endif %}{% else %}dans {{ to_end }} min{% endif %}
+                            {% else %}{{ name }} est rentré·e
+                            {% endif %}
+                          {% endif %}
+                      - type: custom:mushroom-chips-card
+                        alignment: justify
+                        card_mod:
+                          style: |
+                            ha-card {
+                              border-radius: 8px 8px 24px 24px;
+                              border: none;
+                              box-shadow: none;
+                              margin-top: -6px;
+                            }
+                        chips:
+                          - type: template
+                            icon: mdi:clipboard-text-outline
+                            icon_color: teal
+                            content: >
+                              {% set id = state_attr('this.entity_id', 'enfant_id') %}
+                              {% set tr = states.sensor
+                                | selectattr('attributes', 'contains', 'optifamily_kind')
+                                | selectattr('attributes.optifamily_kind', 'eq', 'transmissions')
+                                | selectattr('attributes.enfant_id', 'eq', id) | list %}
+                              {% set n = (tr[0].state | int(0)) if tr else 0 %}
+                              {% if n == 0 %}Aucune transmission
+                              {% elif n == 1 %}1 transmission
+                              {% else %}{{ n }} transmissions
+                              {% endif %}
+                            tap_action:
+                              action: more-info
+                              entity: this.entity_id
+                          - type: template
+                            icon: mdi:image-multiple-outline
+                            icon_color: purple
+                            content: >
+                              {% set id = state_attr('this.entity_id', 'enfant_id') %}
+                              {% set al = states.sensor
+                                | selectattr('attributes', 'contains', 'optifamily_kind')
+                                | selectattr('attributes.optifamily_kind', 'eq', 'albums')
+                                | selectattr('attributes.enfant_id', 'eq', id) | list %}
+                              {% set n = (al[0].state | int(0)) if al else 0 %}
+                              {% if n == 0 %}Aucun album
+                              {% elif n == 1 %}1 album
+                              {% else %}{{ n }} albums
+                              {% endif %}
+                            tap_action:
+                              action: more-info
+                              entity: this.entity_id
+                          - type: template
+                            icon: mdi:calendar-month-outline
+                            icon_color: cyan
+                            content: >
+                              {% set id = state_attr('this.entity_id', 'enfant_id') %}
+                              {% set pl = states.sensor
+                                | selectattr('attributes', 'contains', 'optifamily_kind')
+                                | selectattr('attributes.optifamily_kind', 'eq', 'planning_slots')
+                                | selectattr('attributes.enfant_id', 'eq', id) | list %}
+                              {% set n = (pl[0].state | int(0)) if pl else 0 %}
+                              {{ n }} créneau{{ 'x' if n != 1 }} ce mois
+                            tap_action:
+                              action: more-info
+                              entity: this.entity_id
+
+  # ─── Planning ──────────────────────────────────────────────────
+  - title: Planning
+    path: planning
+    icon: mdi:calendar-week
+    type: sections
+    max_columns: 1
+    sections:
+      - type: grid
+        cards:
           - type: heading
-            heading: Mois affiché par l'API
+            heading: Semaine à venir
             heading_style: title
-            icon: mdi:calendar-text
-          - type: markdown
-            content: |
-              {% set _j = ['lun.','mar.','mer.','jeu.','ven.','sam.','dim.'] %}
-              {% set slots = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'planning_slots') | list %}
-              {% if slots | length == 0 %}
-              *Aucun planning chargé.*
-              {% else %}
-              {% for s in slots %}
-              ### {{ s.attributes.enfant_libelle or s.name }}
-              {{ s.attributes.label or '' }}
-              {% if s.attributes.previous or s.attributes.next %}
-              {{ s.attributes.previous or '—' }} ← → {{ s.attributes.next or '—' }}
-              {% endif %}
+            icon: mdi:view-week-outline
+          - type: custom:auto-entities
+            show_empty: false
+            unique: entity_id
+            card:
+              type: custom:week-planner-card
+              days: 7
+              startingDay: today
+              locale: fr
+              timeFormat: HH:mm
+              showNavigation: true
+              showLegend: true
+              legendToggle: true
+              combineSimilarEvents: true
+              noCardBackground: true
+              eventBackground: color-mix(in srgb, #0d9488 18%, var(--ha-card-background, var(--card-background-color)))
+              dayFormat: '''<span class="number">''d''</span><span class="month">''ccc''</span>'''
+              texts:
+                noEvents: Aucun créneau
+                fullDay: Journée entière
+                today: Aujourd’hui
+                tomorrow: Demain
+                yesterday: Hier
+                moreEvents: Plus de créneaux
+              card_mod:
+                style: |
+                  ha-card {
+                    border-radius: 24px;
+                    border: none;
+                    box-shadow: none;
+                    background: transparent;
+                    padding: 0;
+                  }
+                  .day {
+                    border-radius: 18px;
+                    background: color-mix(in srgb, var(--primary-color) 7%, var(--ha-card-background, var(--card-background-color)));
+                    padding: 10px 8px 12px;
+                  }
+                  .day.today {
+                    box-sizing: border-box;
+                    background: color-mix(in srgb, #0d9488 20%, var(--ha-card-background, var(--card-background-color)));
+                    box-shadow: inset 0 0 0 2px #0d9488;
+                  }
+                  .day.saturday,
+                  .day.sunday {
+                    opacity: 0.88;
+                  }
+                  .event {
+                    border-radius: 10px;
+                    border: none;
+                  }
+                  .event.past {
+                    opacity: 0.45;
+                  }
+                  .number {
+                    display: block;
+                    font-size: 1.55rem;
+                    font-weight: 750;
+                    letter-spacing: -0.02em;
+                    line-height: 1.1;
+                  }
+                  .month {
+                    display: block;
+                    font-size: 0.68rem;
+                    letter-spacing: 0.08em;
+                    text-transform: uppercase;
+                    opacity: 0.65;
+                    font-weight: 600;
+                    margin-bottom: 4px;
+                  }
+            card_param: calendars
+            filter:
+              template: >
+                {% set colors = ['#0d9488', '#0284c7', '#d97706', '#7c3aed', '#db2777', '#059669'] %}
+                {% set fam = states.calendar
+                  | selectattr('attributes', 'contains', 'optifamily_kind')
+                  | selectattr('attributes.optifamily_kind', 'eq', 'planning_family')
+                  | list %}
+                {% set kids = states.calendar
+                  | selectattr('attributes', 'contains', 'optifamily_kind')
+                  | selectattr('attributes.optifamily_kind', 'eq', 'planning')
+                  | list %}
+                {% set src = fam if fam else kids %}
+                {% set ns = namespace(items=[]) %}
+                {% for c in src %}
+                  {% set name = state_attr(c.entity_id, 'friendly_name')
+                    or c.attributes.friendly_name
+                    or c.name
+                    or 'OptiFamily' %}
+                  {% set ns.items = ns.items + [{
+                    'entity': c.entity_id,
+                    'name': name,
+                    'color': colors[loop.index0 % (colors | length)],
+                    'icon': 'mdi:baby-carriage' if fam else 'mdi:baby-face-outline'
+                  }] %}
+                {% endfor %}
+                {{ ns.items }}
 
-              {% for j in s.attributes.jours or [] %}
-              {% set jd = as_datetime(j.date) if j.date else none %}
-              - {% if jd %}**{{ _j[jd.weekday()] }} {{ jd.strftime('%d/%m') }}**{% else %}{{ j.date }}{% endif %} — {{ j.creneaux | join(' · ') }}
-              {% endfor %}
-              {% if (s.attributes.jours or []) | length == 0 %}
-              _Pas de créneau ce mois-ci._
-              {% endif %}
-
-              {% endfor %}
-              {% endif %}
+  # ─── Calendrier ────────────────────────────────────────────────
+  - title: Calendrier
+    path: calendrier
+    icon: mdi:calendar-month
+    type: panel
+    cards:
+      - type: custom:auto-entities
+        show_empty: false
+        unique: entity_id
+        card:
+          type: calendar
+          initial_view: dayGridMonth
+        card_param: entities
+        filter:
+          template: >
+            {% set fam = states.calendar
+              | selectattr('attributes', 'contains', 'optifamily_kind')
+              | selectattr('attributes.optifamily_kind', 'eq', 'planning_family')
+              | map(attribute='entity_id') | list %}
+            {% set kids = states.calendar
+              | selectattr('attributes', 'contains', 'optifamily_kind')
+              | selectattr('attributes.optifamily_kind', 'eq', 'planning')
+              | map(attribute='entity_id') | list %}
+            {{ fam if fam else kids }}

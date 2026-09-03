@@ -388,6 +388,7 @@ class OptieFamilyChildTransmissionsSensor(_ChildSensor):
         return {
             "enfant_id": self._enfant.id,
             "enfant_libelle": self._enfant.libelle,
+            "optifamily_kind": "transmissions",
             "count": self.native_value,
         }
 
@@ -411,5 +412,6 @@ class OptieFamilyChildAlbumsSensor(_ChildSensor):
         return {
             "enfant_id": self._enfant.id,
             "enfant_libelle": self._enfant.libelle,
+            "optifamily_kind": "albums",
             "count": self.native_value,
         }

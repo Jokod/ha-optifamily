@@ -119,7 +119,7 @@ Les noms exacts des entités dépendent du **nom de la crèche** et des prénoms
 (ex. `sensor.ma_creche_enfants`, `sensor.lea_present_aujourd_hui`).
 Les tableaux de bord fournis retrouvent tout seuls les capteurs via l’attribut `optifamily_kind`.
 
-Un **calendrier** `calendar.optifamily_planning` expose les créneaux (navigation mois par mois dans le tableau de bord ou le panneau Calendrier).
+Un **calendrier** `calendar.optifamily_planning` alimente l’aperçu « Cette semaine » et l’onglet **Calendrier** (mois).
 
 ---
 
@@ -153,6 +153,18 @@ Après installation **HACS** (et un redémarrage), les blueprints sont copiés a
 
 Import : **Paramètres → Tableaux de bord → Ajouter → Importer YAML**.
 Les cartes détectent l’intégration automatiquement (`optifamily_kind`).
+
+Cartes Lovelace HACS à installer **à la main** (HACS → Frontend). L’intégration **ne les installe pas**.
+
+| Carte | Dépôt |
+|---|---|
+| Mushroom | [lovelace-mushroom](https://github.com/piitaya/lovelace-mushroom) |
+| card-mod | [lovelace-card-mod](https://github.com/thomasloven/lovelace-card-mod) |
+| auto-entities | [lovelace-auto-entities](https://github.com/thomasloven/lovelace-auto-entities) |
+| week-planner-card | [week-planner-card](https://github.com/FamousWolf/week-planner-card) |
+
+Onglets : **Aujourd’hui**, **Enfants**, **Planning** (week-planner-card, 7 jours + navigation) et **Calendrier** (mois, mise en page panneau). Sans ces plugins, l’import affiche « custom element doesn’t exist ».
+
 
 ### Package helpers (optionnel)
 

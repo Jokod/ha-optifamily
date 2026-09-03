@@ -218,19 +218,29 @@ def planning_to_events(
     planning: dict[str, Any] | None,
     enfant_libelle: str,
     tzinfo: datetime.tzinfo | None = None,
+    *,
+    year: int | None = None,
+    month: int | None = None,
 ) -> list[PlanningEvent]:
-    """Convertit un planning mensuel API en événements calendrier."""
+    """Convertit un planning mensuel API en événements calendrier (sans doublons)."""
     events: list[PlanningEvent] = []
     if not planning:
         return events
+    seen: set[str] = set()
     for semaine in planning.get("semaines", []):
         for journee in semaine.get("journees", []):
+            if journee.get("visible") is False:
+                continue
             raw_date = journee.get("date")
             if not raw_date:
                 continue
             try:
                 day = date.fromisoformat(str(raw_date)[:10])
             except ValueError:
+                continue
+            if year is not None and day.year != year:
+                continue
+            if month is not None and day.month != month:
                 continue
             for index, creneau in enumerate(journee.get("creneaux") or []):
                 if not isinstance(creneau, dict):
@@ -239,7 +249,13 @@ def planning_to_events(
                 title = labels[0] if labels else "Créneau"
                 summary = f"{enfant_libelle} — {title}"
                 description = str(creneau.get("type") or "")
-                uid = str(creneau.get("id") or f"{raw_date}-{index}")
+                uid = str(
+                    creneau.get("id")
+                    or f"{raw_date}-{creneau.get('label')}-{creneau.get('type')}-{index}"
+                )
+                if uid in seen:
+                    continue
+                seen.add(uid)
                 bounds = parse_creneau_bounds(str(creneau.get("label") or ""), day)
                 if bounds:
                     start, end = bounds
