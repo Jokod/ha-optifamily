@@ -1,0 +1,74 @@
+blueprint:
+  name: OptiFamily — Changement de présence (un enfant)
+  description: >
+    Notifie dès que le capteur « Présent aujourd'hui » passe de absent→présent
+    ou présent→absent. Utile le matin ou en cas de fermeture imprévue.
+  domain: automation
+  author: ha-optifamily
+  homeassistant:
+    min_version: 2025.9.0
+  input:
+    presence_sensor:
+      name: Capteur présence
+      selector:
+        entity:
+          filter:
+            - domain: sensor
+              integration: optifamily
+    notify_action:
+      name: Notification
+      selector:
+        action:
+    notify_on_present:
+      name: Notifier si passage à « présent »
+      default: true
+      selector:
+        boolean:
+    notify_on_absent:
+      name: Notifier si passage à « absent »
+      default: true
+      selector:
+        boolean:
+
+trigger:
+  - platform: state
+    entity_id: !input presence_sensor
+    to:
+      - "présent"
+      - "absent"
+
+condition:
+  - condition: template
+    value_template: >
+      {{ trigger.from_state.state not in ['unknown', 'unavailable', none]
+         and trigger.to_state.state != trigger.from_state.state }}
+
+action:
+  - variables:
+      enfant: "{{ state_attr(trigger.entity_id, 'enfant_libelle') | default('Enfant') }}"
+      creneaux: "{{ state_attr(trigger.entity_id, 'creneaux') | default([]) }}"
+      horaires: >
+        {% set labels = creneaux | map(attribute='label') | list %}
+        {{ labels | join(', ') if labels else 'Horaires non disponibles' }}
+      flag_present: !input notify_on_present
+      flag_absent: !input notify_on_absent
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.to_state.state == 'présent' and flag_present }}"
+        sequence:
+          - action: !input notify_action
+            data:
+              title: "OptiFamily — {{ enfant }}"
+              message: "Présent aujourd'hui. Créneaux : {{ horaires }}."
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.to_state.state == 'absent' and flag_absent }}"
+        sequence:
+          - action: !input notify_action
+            data:
+              title: "OptiFamily — {{ enfant }}"
+              message: "Absent aujourd'hui."
+
+mode: queued
+max: 5

@@ -1,0 +1,49 @@
+blueprint:
+  name: OptiFamily — Transmission (un enfant)
+  description: >
+    Notifie lorsque de nouvelles transmissions sont publiées pour un enfant.
+    Créez une automatisation par enfant si vous en avez plusieurs.
+  domain: automation
+  author: ha-optifamily
+  homeassistant:
+    min_version: 2025.9.0
+  input:
+    transmissions_sensor:
+      name: Capteur transmissions du jour
+      description: >
+        Capteur « Transmissions du jour » d'un enfant.
+        Répétez ce blueprint pour chaque enfant.
+      selector:
+        entity:
+          filter:
+            - domain: sensor
+              integration: optifamily
+    notify_action:
+      name: Action de notification
+      description: >
+        Action à exécuter pour notifier l'utilisateur
+        (ex. notify.mobile_app_mon_telephone).
+      selector:
+        action:
+
+trigger:
+  - platform: state
+    entity_id: !input transmissions_sensor
+
+condition:
+  - condition: template
+    value_template: >
+      {{ trigger.to_state.state not in ['unknown', 'unavailable']
+         and trigger.from_state.state not in ['unknown', 'unavailable']
+         and trigger.to_state.state | int(0) > trigger.from_state.state | int(0) }}
+
+action:
+  - variables:
+      count: "{{ states(input.transmissions_sensor) | int(0) }}"
+      enfant: "{{ state_attr(input.transmissions_sensor, 'enfant_libelle') | default('Enfant') }}"
+  - action: !input notify_action
+    data:
+      title: "Transmissions — {{ enfant }}"
+      message: "{{ count }} transmission(s) disponible(s) aujourd'hui sur optiFamily."
+
+mode: single

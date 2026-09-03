@@ -1,0 +1,57 @@
+blueprint:
+  name: OptiFamily — Rappel crèche (tous les enfants)
+  description: >
+    Envoie une notification le matin si au moins un enfant est prévu en crèche.
+    Adapté aux familles avec un ou plusieurs enfants.
+  domain: automation
+  author: ha-optifamily
+  homeassistant:
+    min_version: 2025.9.0
+  input:
+    enfants_presents_sensor:
+      name: Capteur enfants en crèche aujourd'hui
+      description: Capteur OptiFamily « Enfants en crèche aujourd'hui »
+      selector:
+        entity:
+          filter:
+            - domain: sensor
+              integration: optifamily
+    reminder_time:
+      name: Heure du rappel
+      default: "07:30:00"
+      selector:
+        time:
+    notify_action:
+      name: Action de notification
+      description: >
+        Action à exécuter pour notifier l'utilisateur
+        (ex. notify.mobile_app_mon_telephone).
+      selector:
+        action:
+
+trigger:
+  - platform: time
+    at: !input reminder_time
+
+condition:
+  - condition: numeric_state
+    entity_id: !input enfants_presents_sensor
+    above: 0
+
+action:
+  - variables:
+      noms: "{{ state_attr(input.enfants_presents_sensor, 'noms') | default([]) }}"
+      liste: "{{ state_attr(input.enfants_presents_sensor, 'liste') | default([]) }}"
+      details: >
+        {% for e in liste if e.presence == 'présent' %}
+        - {{ e.libelle }} : {{ e.creneaux | join(', ') if e.creneaux else 'horaires non disponibles' }}
+        {% endfor %}
+  - action: !input notify_action
+    data:
+      title: "Crèche aujourd'hui"
+      message: >
+        {{ states(input.enfants_presents_sensor) | int }} enfant(s) en crèche :
+        {{ noms | join(', ') }}.
+        {{ details }}
+
+mode: single

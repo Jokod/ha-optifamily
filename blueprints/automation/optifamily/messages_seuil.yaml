@@ -1,0 +1,53 @@
+blueprint:
+  name: OptiFamily — Alerte messages non lus (seuil)
+  description: >
+    Notifie quand le nombre de messages non lus atteint ou dépasse un seuil
+    (ex. 1, 3, 5), avec anti-spam (mode single).
+  domain: automation
+  author: ha-optifamily
+  homeassistant:
+    min_version: 2025.9.0
+  input:
+    messages_sensor:
+      name: Capteur messages non lus
+      selector:
+        entity:
+          filter:
+            - domain: sensor
+              integration: optifamily
+    threshold:
+      name: Seuil
+      default: 1
+      selector:
+        number:
+          min: 1
+          max: 50
+          mode: box
+    notify_action:
+      name: Notification
+      selector:
+        action:
+
+trigger:
+  - platform: numeric_state
+    entity_id: !input messages_sensor
+    above: !input threshold
+
+condition:
+  - condition: template
+    value_template: >
+      {{ trigger.from_state.state | int(0) < trigger.to_state.state | int(0) }}
+
+action:
+  - variables:
+      messages_entity: !input messages_sensor
+      seuil: !input threshold
+  - action: !input notify_action
+    data:
+      title: "OptiFamily — Messages"
+      message: >
+        {{ states(messages_entity) | int(0) }} message(s) non lu(s)
+        (seuil : {{ seuil }}).
+        Dernier : {{ state_attr(messages_entity, 'last_message_date') | default('n/a') }}.
+
+mode: single

@@ -1,0 +1,52 @@
+blueprint:
+  name: OptiFamily — Script résumé famille
+  description: >
+    Script réutilisable qui construit un texte de résumé (présents, messages,
+    transmissions) à partir des capteurs agrégés. À appeler depuis une
+    automatisation, un bouton Lovelace ou une notification.
+  domain: script
+  author: ha-optifamily
+  homeassistant:
+    min_version: 2025.9.0
+  input:
+    enfants_sensor:
+      name: Capteur « Enfants »
+      selector:
+        entity:
+          filter:
+            - domain: sensor
+              integration: optifamily
+    messages_sensor:
+      name: Capteur messages non lus
+      selector:
+        entity:
+          filter:
+            - domain: sensor
+              integration: optifamily
+    notify_action:
+      name: Notification
+      selector:
+        action:
+
+sequence:
+  - variables:
+      enfants_entity: !input enfants_sensor
+      messages_entity: !input messages_sensor
+      liste: "{{ state_attr(enfants_entity, 'liste') | default([]) }}"
+      presents: >
+        {{ liste | selectattr('presence', 'equalto', 'présent')
+                 | map(attribute='libelle') | list }}
+      unread: "{{ states(messages_entity) | int(0) }}"
+      transmissions_total: >
+        {{ liste | map(attribute='transmissions') | map('int', 0) | sum }}
+      resume: >
+        OptiFamily — {{ now().strftime('%d/%m %H:%M') }}
+        Présents : {{ presents | join(', ') if presents else 'aucun' }}
+        Messages non lus : {{ unread }}
+        Transmissions du jour : {{ transmissions_total }}
+  - action: !input notify_action
+    data:
+      title: "OptiFamily"
+      message: "{{ resume }}"
+
+mode: single

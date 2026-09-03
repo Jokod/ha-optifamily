@@ -1,0 +1,80 @@
+blueprint:
+  name: OptiFamily — Bilan du soir (famille)
+  description: >
+    Envoie chaque soir un résumé : enfants présents aujourd'hui, messages non lus,
+    transmissions du jour (via le capteur agrégé « Enfants »).
+  domain: automation
+  author: ha-optifamily
+  homeassistant:
+    min_version: 2025.9.0
+  input:
+    enfants_sensor:
+      name: Capteur « Enfants »
+      description: Capteur agrégé OptiFamily (attribut liste)
+      selector:
+        entity:
+          filter:
+            - domain: sensor
+              integration: optifamily
+    messages_sensor:
+      name: Capteur messages non lus
+      selector:
+        entity:
+          filter:
+            - domain: sensor
+              integration: optifamily
+    bilan_time:
+      name: Heure du bilan
+      default: "19:30:00"
+      selector:
+        time:
+    only_if_activity:
+      name: Envoyer seulement s'il y a eu de l'activité
+      description: Présence, message non lu ou au moins une transmission
+      default: true
+      selector:
+        boolean:
+    notify_action:
+      name: Notification
+      selector:
+        action:
+
+trigger:
+  - platform: time
+    at: !input bilan_time
+
+action:
+  - variables:
+      enfants_entity: !input enfants_sensor
+      messages_entity: !input messages_sensor
+      only_activity: !input only_if_activity
+      liste: "{{ state_attr(enfants_entity, 'liste') | default([]) }}"
+      presents: >
+        {{ liste | selectattr('presence', 'equalto', 'présent')
+                 | map(attribute='libelle') | list }}
+      transmissions_total: >
+        {{ liste | map(attribute='transmissions') | map('int', 0) | sum }}
+      unread: "{{ states(messages_entity) | int(0) }}"
+      has_activity: >
+        {{ presents | length > 0 or unread > 0 or transmissions_total > 0 }}
+  - condition: template
+    value_template: "{{ (not only_activity) or has_activity }}"
+  - variables:
+      lignes_enfants: >
+        {% for e in liste %}
+        • {{ e.libelle }} — {{ e.presence }}
+        {%- if e.creneaux %} ({{ e.creneaux | join(', ') }}){% endif %}
+        {%- if e.transmissions %} · {{ e.transmissions }} transmission(s){% endif %}
+
+        {% endfor %}
+  - action: !input notify_action
+    data:
+      title: "OptiFamily — Bilan du soir"
+      message: >
+        Présents : {{ presents | join(', ') if presents else 'aucun' }}.
+        Messages non lus : {{ unread }}.
+        Transmissions : {{ transmissions_total }}.
+
+        {{ lignes_enfants }}
+
+mode: single

@@ -1,0 +1,40 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connexion à OptiFamily",
+        "description": "Entrez vos identifiants OptiFamily. La crèche et les enfants seront détectés automatiquement.\n\nVous pouvez aussi importer vos identifiants via `configuration.yaml` et `secrets.yaml`.",
+        "data": {
+          "username": "Adresse e-mail",
+          "password": "Mot de passe"
+        }
+      },
+      "creche": {
+        "title": "Sélection de la crèche",
+        "description": "Plusieurs crèches ({count}) sont associées à ce compte. Choisissez celle à utiliser.",
+        "data": {
+          "creche_id": "Crèche"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Impossible de contacter l'API OptiFamily. Vérifiez votre connexion.",
+      "invalid_auth": "Identifiants invalides. Vérifiez votre e-mail et votre mot de passe.",
+      "no_creche": "Aucune crèche trouvée pour ce compte. Vérifiez votre adresse e-mail.",
+      "unknown": "Erreur inattendue. Consultez les logs Home Assistant."
+    },
+    "abort": {
+      "already_configured": "Ce compte OptiFamily est déjà configuré."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options OptiFamily",
+        "data": {
+          "scan_interval": "Intervalle de mise à jour (secondes)"
+        }
+      }
+    }
+  }
+}

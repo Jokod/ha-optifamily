@@ -1,0 +1,62 @@
+[project]
+name = "ha-optifamily"
+version = "1.0.0"
+description = "Intégration Home Assistant non officielle pour optiFamily"
+readme = "README.md"
+requires-python = ">=3.13"
+license = { text = "MIT" }
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["custom_components", "tests"]
+extend-exclude = [
+  ".venv",
+  "venv",
+]
+
+[tool.ruff.lint]
+select = [
+  "E",    # pycodestyle errors
+  "W",    # pycodestyle warnings
+  "F",    # pyflakes
+  "I",    # isort
+  "UP",   # pyupgrade
+  "B",    # flake8-bugbear
+  "SIM",  # flake8-simplify
+  "ASYNC",# flake8-async
+  "RUF",  # ruff-specific
+]
+ignore = [
+  "E501",   # line length handled by formatter
+  "RUF001", # allow typographic dashes / accents in user-facing French strings
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["custom_components"]
+force-sort-within-sections = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+pythonpath = ["."]
+filterwarnings = [
+  "ignore::DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["custom_components/optifamily"]
+omit = [
+  "*/translations/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true

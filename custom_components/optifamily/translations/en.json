@@ -1,0 +1,40 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to OptiFamily",
+        "description": "Enter your OptiFamily credentials. Nursery and children will be detected automatically.\n\nYou can also import credentials via `configuration.yaml` and `secrets.yaml`.",
+        "data": {
+          "username": "Email address",
+          "password": "Password"
+        }
+      },
+      "creche": {
+        "title": "Select nursery",
+        "description": "Multiple nurseries ({count}) are linked to this account. Choose one.",
+        "data": {
+          "creche_id": "Nursery"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot reach the OptiFamily API. Check your network connection.",
+      "invalid_auth": "Invalid credentials. Check your email and password.",
+      "no_creche": "No nursery found for this account. Check your email address.",
+      "unknown": "Unexpected error. Check the Home Assistant logs."
+    },
+    "abort": {
+      "already_configured": "This OptiFamily account is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "OptiFamily Options",
+        "data": {
+          "scan_interval": "Update interval (seconds)"
+        }
+      }
+    }
+  }
+}

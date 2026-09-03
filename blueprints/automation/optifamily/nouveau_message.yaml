@@ -1,0 +1,58 @@
+blueprint:
+  name: OptiFamily — Notification nouveau message
+  description: >
+    Envoie une notification lorsque le nombre de messages non lus optiFamily augmente.
+  domain: automation
+  author: ha-optifamily
+  homeassistant:
+    min_version: 2025.9.0
+  input:
+    messages_sensor:
+      name: Capteur messages non lus
+      description: Capteur OptiFamily « Messages non lus »
+      selector:
+        entity:
+          filter:
+            - domain: sensor
+              integration: optifamily
+    notify_action:
+      name: Action de notification
+      description: >
+        Action à exécuter pour notifier l'utilisateur
+        (ex. notify.mobile_app_mon_telephone).
+      selector:
+        action:
+
+trigger:
+  - platform: state
+    entity_id: !input messages_sensor
+
+condition:
+  - condition: template
+    value_template: >
+      {{ trigger.to_state.state not in ['unknown', 'unavailable']
+         and trigger.from_state.state not in ['unknown', 'unavailable']
+         and trigger.to_state.state | int(0) > trigger.from_state.state | int(0) }}
+
+action:
+  - variables:
+      unread_count: "{{ states(input.messages_sensor) | int(0) }}"
+      last_date: "{{ state_attr(input.messages_sensor, 'last_message_date') }}"
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ last_date is not none }}"
+        sequence:
+          - action: !input notify_action
+            data:
+              title: "OptiFamily"
+              message: >
+                Vous avez {{ unread_count }} message(s) non lu(s).
+                Dernier message : {{ last_date }}.
+    default:
+      - action: !input notify_action
+        data:
+          title: "OptiFamily"
+          message: "Vous avez {{ unread_count }} message(s) non lu(s)."
+
+mode: single

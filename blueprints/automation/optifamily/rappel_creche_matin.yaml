@@ -1,0 +1,64 @@
+blueprint:
+  name: OptiFamily — Rappel crèche le matin
+  description: >
+    Envoie une notification le matin si l'enfant est prévu en crèche aujourd'hui,
+    avec le détail des créneaux du jour.
+  domain: automation
+  author: ha-optifamily
+  homeassistant:
+    min_version: 2025.9.0
+  input:
+    presence_sensor:
+      name: Capteur présence aujourd'hui
+      description: Capteur OptiFamily « Présent aujourd'hui » de l'enfant
+      selector:
+        entity:
+          filter:
+            - domain: sensor
+              integration: optifamily
+    reminder_time:
+      name: Heure du rappel
+      default: "07:30:00"
+      selector:
+        time:
+    notify_action:
+      name: Action de notification
+      description: >
+        Action à exécuter pour notifier l'utilisateur
+        (ex. notify.mobile_app_mon_telephone).
+      selector:
+        action:
+    child_name:
+      name: Prénom de l'enfant (optionnel)
+      description: Affiché dans le titre de la notification
+      default: ""
+      selector:
+        text:
+
+trigger:
+  - platform: time
+    at: !input reminder_time
+
+condition:
+  - condition: state
+    entity_id: !input presence_sensor
+    state: "présent"
+
+action:
+  - variables:
+      creneaux: "{{ state_attr(input.presence_sensor, 'creneaux') | default([]) }}"
+      horaires: >
+        {% set labels = creneaux | map(attribute='label') | list %}
+        {{ labels | join(', ') if labels else 'Horaires non disponibles' }}
+      titre: >
+        {% if input.child_name %}
+          Crèche — {{ input.child_name }}
+        {% else %}
+          Crèche aujourd'hui
+        {% endif %}
+  - action: !input notify_action
+    data:
+      title: "{{ titre }}"
+      message: "Présence prévue aujourd'hui. Créneaux : {{ horaires }}."
+
+mode: single

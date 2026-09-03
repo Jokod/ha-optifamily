@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint (Ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements_test.txt
+
+      - name: Install Ruff
+        run: |
+          python -m pip install --upgrade pip
+          pip install "ruff==0.11.2"
+
+      - name: Ruff check
+        run: ruff check custom_components tests
+
+      - name: Ruff format
+        run: ruff format --check custom_components tests
+
+  test:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.13 = plancher HA 2025.9 ; 3.14 = runtime HA 2026.x
+        python-version: ["3.13", "3.14"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements_test.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements_test.txt
+
+      - name: Run pytest
+        run: |
+          pytest \
+            --cov=custom_components/optifamily \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --junitxml=junit.xml
+
+      - name: Upload coverage artifact
+        if: matrix.python-version == '3.14'
+        uses: actions/upload-artifact@v5
+        with:
+          name: coverage-report
+          path: |
+            coverage.xml
+            junit.xml
+          retention-days: 7
+
+  hassfest:
+    name: Hassfest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Run hassfest
+        uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    name: HACS validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: HACS validation
+        uses: hacs/action@main
+        with:
+          category: integration
+
+  ci-success:
+    name: CI Success
+    if: always()
+    needs: [lint, test, hassfest, hacs]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check results
+        run: |
+          echo "lint=${{ needs.lint.result }}"
+          echo "test=${{ needs.test.result }}"
+          echo "hassfest=${{ needs.hassfest.result }}"
+          echo "hacs=${{ needs.hacs.result }}"
+          if [[ "${{ needs.lint.result }}" != "success" \
+             || "${{ needs.test.result }}" != "success" \
+             || "${{ needs.hassfest.result }}" != "success" \
+             || "${{ needs.hacs.result }}" != "success" ]]; then
+            echo "One or more required jobs failed"
+            exit 1
+          fi
+          echo "All CI checks passed"
