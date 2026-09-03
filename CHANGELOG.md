@@ -7,6 +7,14 @@ et ce projet adhère au [Versionnement Sémantique](https://semver.org/lang/fr/)
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-09-03
+
+### Changed
+- Capteur « Messages non lus » remplacé par deux capteurs : crèche (`sender=false`) et moi (`sender=true`), avec attributs `origine`, `total`, `non_lus`, `last_message_date`, `last_unread_date`
+
+### Added
+- Badge GitHub Release dans le README
+
 ## [1.0.1] - 2026-09-03
 
 ### Fixed

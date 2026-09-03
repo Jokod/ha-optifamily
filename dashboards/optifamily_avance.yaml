@@ -19,7 +19,8 @@ views:
           {% set liste = state_attr('sensor.optifamily_enfants', 'liste') or [] %}
           {% set presents = liste | selectattr('presence', 'equalto', 'présent') | list %}
           **{{ presents | length }}** / **{{ liste | length }}** enfant(s) en crèche aujourd'hui
-          · Messages non lus : **{{ states('sensor.optifamily_messages_non_lus') }}**
+          · Msg crèche : **{{ states('sensor.optifamily_messages_non_lus_creche') }}**
+          · Msg moi : **{{ states('sensor.optifamily_messages_non_lus_moi') }}**
 
       - type: glance
         title: Compte
@@ -29,22 +30,37 @@ views:
             name: Enfants
           - entity: sensor.optifamily_enfants_en_creche_aujourd_hui
             name: Présents
-          - entity: sensor.optifamily_messages_non_lus
-            name: Messages
+          - entity: sensor.optifamily_messages_non_lus_creche
+            name: Msg crèche
+          - entity: sensor.optifamily_messages_non_lus_moi
+            name: Msg moi
           - entity: sensor.optifamily_actualites
             name: Actus
 
       - type: conditional
         conditions:
           - condition: numeric_state
-            entity_id: sensor.optifamily_messages_non_lus
+            entity_id: sensor.optifamily_messages_non_lus_creche
             above: 0
         card:
           type: markdown
           content: |
-            ### Messages non lus
-            Vous avez **{{ states('sensor.optifamily_messages_non_lus') }}** message(s) en attente
-            {% set d = state_attr('sensor.optifamily_messages_non_lus', 'last_message_date') %}
+            ### Messages de la crèche
+            **{{ states('sensor.optifamily_messages_non_lus_creche') }}** message(s) non lu(s)
+            {% set d = state_attr('sensor.optifamily_messages_non_lus_creche', 'last_unread_date') %}
+            {% if d %}· dernier : {{ d }}{% endif %}
+
+      - type: conditional
+        conditions:
+          - condition: numeric_state
+            entity_id: sensor.optifamily_messages_non_lus_moi
+            above: 0
+        card:
+          type: markdown
+          content: |
+            ### Messages envoyés (non lus)
+            **{{ states('sensor.optifamily_messages_non_lus_moi') }}** message(s) encore non lu(s)
+            {% set d = state_attr('sensor.optifamily_messages_non_lus_moi', 'last_unread_date') %}
             {% if d %}· dernier : {{ d }}{% endif %}
 
       - type: markdown
@@ -116,8 +132,10 @@ views:
         entities:
           - entity: sensor.optifamily_enfants_en_creche_aujourd_hui
             name: Présents
-          - entity: sensor.optifamily_messages_non_lus
-            name: Messages
+          - entity: sensor.optifamily_messages_non_lus_creche
+            name: Msg crèche
+          - entity: sensor.optifamily_messages_non_lus_moi
+            name: Msg moi
 
       - type: markdown
         content: |

@@ -2,7 +2,8 @@
 
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2025.9%2B-41BDF5.svg?logo=homeassistant&logoColor=white)](https://www.home-assistant.io/)
-[![CI](https://img.shields.io/github/actions/workflow/status/jokod/ha-optifamily/ci.yml?branch=main&label=CI&logo=github)](https://github.com/jokod/ha-optifamily/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Jokod/ha-optifamily?include_prereleases&label=Release&logo=github)](https://github.com/Jokod/ha-optifamily/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/Jokod/ha-optifamily/ci.yml?branch=main&label=CI&logo=github)](https://github.com/Jokod/ha-optifamily/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.13%2B%20(3.14%20HA%20actuel)-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Licence MIT](https://img.shields.io/badge/Licence-MIT-green.svg)](LICENSE)
 
@@ -101,7 +102,8 @@ Puis redémarrez Home Assistant.
 |---|---|
 | Enfants | Nombre d’enfants suivis |
 | Enfants en crèche aujourd’hui | Combien d’enfants sont prévus aujourd’hui (+ leurs prénoms) |
-| Messages non lus | Nouveaux messages de la crèche |
+| Messages non lus (crèche) | Messages reçus de la crèche non lus |
+| Messages non lus (moi) | Messages que vous avez envoyés encore non lus |
 | Actualités / Documents / Factures | Compteurs utiles pour des notifications |
 
 ### Par enfant (un appareil Home Assistant chacun)
@@ -168,7 +170,7 @@ automation:
   - alias: "OptiFamily - Nouveau message"
     trigger:
       - platform: state
-        entity_id: sensor.optifamily_messages_non_lus
+        entity_id: sensor.optifamily_messages_non_lus_creche
     condition:
       - condition: template
         value_template: "{{ trigger.to_state.state | int > trigger.from_state.state | int }}"
@@ -176,7 +178,7 @@ automation:
       - service: notify.mobile_app_votre_telephone
         data:
           title: "OptiFamily"
-          message: "Vous avez {{ states('sensor.optifamily_messages_non_lus') }} message(s) non lu(s)."
+          message: "Vous avez {{ states('sensor.optifamily_messages_non_lus_creche') }} message(s) de la crèche non lu(s)."
 ```
 
 ### Exemple : rappel matinal (tous les enfants)

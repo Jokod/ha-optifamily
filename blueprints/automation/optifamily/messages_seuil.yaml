@@ -10,6 +10,8 @@ blueprint:
   input:
     messages_sensor:
       name: Capteur messages non lus
+      description: >
+        Capteur « Messages non lus (crèche) » ou « Messages non lus (moi) »
       selector:
         entity:
           filter:
@@ -42,12 +44,14 @@ action:
   - variables:
       messages_entity: !input messages_sensor
       seuil: !input threshold
+      origine: "{{ state_attr(messages_entity, 'origine') | default('inconnu') }}"
   - action: !input notify_action
     data:
       title: "OptiFamily — Messages"
       message: >
-        {{ states(messages_entity) | int(0) }} message(s) non lu(s)
+        {{ states(messages_entity) | int(0) }} message(s) non lu(s) ({{ origine }})
         (seuil : {{ seuil }}).
-        Dernier : {{ state_attr(messages_entity, 'last_message_date') | default('n/a') }}.
+        Dernier : {{ state_attr(messages_entity, 'last_unread_date')
+          or state_attr(messages_entity, 'last_message_date') | default('n/a') }}.
 
 mode: single

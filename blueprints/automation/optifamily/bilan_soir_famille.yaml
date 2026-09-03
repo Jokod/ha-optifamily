@@ -18,6 +18,8 @@ blueprint:
               integration: optifamily
     messages_sensor:
       name: Capteur messages non lus
+      description: >
+        Préférez « Messages non lus (crèche) » pour le bilan
       selector:
         entity:
           filter:

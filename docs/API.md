@@ -411,7 +411,7 @@ Toujours remplacer par : `EMAIL`, `PASSWORD`, `ACCESS_TOKEN`, `CRECHE_ID`, `ENFA
 | Présence / créneaux | `/enfant/{id}/planning/...` |
 | Transmissions | `/enfant/{id}/transmissions/{date}` |
 | Albums | `/enfant/{id}/albums` |
-| Messages non lus | `/messages` |
+| Messages non lus (crèche / moi) | `/messages` (`sender`) |
 | Actualités / docs / factures | endpoints correspondants (compteurs) |
 
 Non utilisés volontairement : `/profil`, `remove-fcm-token` (hors besoin domotique / trop sensible).

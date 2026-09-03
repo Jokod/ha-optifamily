@@ -25,7 +25,7 @@ template:
           {% set liste = state_attr('sensor.optifamily_enfants', 'liste') or [] %}
           {% set presents = liste | selectattr('presence', 'equalto', 'présent')
                                    | map(attribute='libelle') | list %}
-          {{ presents | length }} présent(s) · {{ states('sensor.optifamily_messages_non_lus') | int(0) }} msg
+          {{ presents | length }} présent(s) · {{ states('sensor.optifamily_messages_non_lus_creche') | int(0) }} msg crèche · {{ states('sensor.optifamily_messages_non_lus_moi') | int(0) }} msg moi
         attributes:
           presents: >
             {% set liste = state_attr('sensor.optifamily_enfants', 'liste') or [] %}

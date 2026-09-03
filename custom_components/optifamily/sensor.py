@@ -33,6 +33,29 @@ from .models import (
 _LOGGER = logging.getLogger(__name__)
 
 
+def _messages_from_sender(messages: list[dict[str, Any]], *, from_me: bool) -> list[dict[str, Any]]:
+    """Filtre les messages selon l'expéditeur (`sender=true` = parent connecté)."""
+    return [m for m in messages if bool(m.get("sender", False)) is from_me]
+
+
+def _unread_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Messages non lus (`vu=false`)."""
+    return [m for m in messages if not m.get("vu", True)]
+
+
+def _message_sensor_attrs(data: OptieFamilyData, *, from_me: bool) -> dict[str, Any]:
+    """Attributs pour un capteur messages (parent ou crèche)."""
+    subset = _messages_from_sender(data.messages, from_me=from_me)
+    unread = _unread_messages(subset)
+    return {
+        "origine": "moi" if from_me else "creche",
+        "total": len(subset),
+        "non_lus": len(unread),
+        "last_message_date": subset[0].get("date") if subset else None,
+        "last_unread_date": unread[0].get("date") if unread else None,
+    }
+
+
 @dataclass(frozen=True, kw_only=True)
 class OptieFamilySensorDescription(SensorEntityDescription):
     """Description enrichie avec un extracteur de valeur."""
@@ -62,15 +85,20 @@ GLOBAL_SENSORS: tuple[OptieFamilySensorDescription, ...] = (
         },
     ),
     OptieFamilySensorDescription(
-        key="messages_unread",
-        name="Messages non lus",
+        key="messages_unread_creche",
+        name="Messages non lus (crèche)",
         icon="mdi:message-badge",
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda d: sum(1 for m in d.messages if not m.get("vu", True)),
-        attributes_fn=lambda d: {
-            "total": len(d.messages),
-            "last_message_date": (d.messages[0]["date"] if d.messages else None),
-        },
+        value_fn=lambda d: len(_unread_messages(_messages_from_sender(d.messages, from_me=False))),
+        attributes_fn=lambda d: _message_sensor_attrs(d, from_me=False),
+    ),
+    OptieFamilySensorDescription(
+        key="messages_unread_me",
+        name="Messages non lus (moi)",
+        icon="mdi:message-reply-text",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda d: len(_unread_messages(_messages_from_sender(d.messages, from_me=True))),
+        attributes_fn=lambda d: _message_sensor_attrs(d, from_me=True),
     ),
     OptieFamilySensorDescription(
         key="actualites_total",

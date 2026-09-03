@@ -21,8 +21,10 @@ views:
             name: Enfants
           - entity: sensor.optifamily_enfants_en_creche_aujourd_hui
             name: En crèche
-          - entity: sensor.optifamily_messages_non_lus
-            name: Messages
+          - entity: sensor.optifamily_messages_non_lus_creche
+            name: Msg crèche
+          - entity: sensor.optifamily_messages_non_lus_moi
+            name: Msg moi
           - entity: sensor.optifamily_actualites
             name: Actualités
 

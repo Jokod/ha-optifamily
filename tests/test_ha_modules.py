@@ -339,7 +339,11 @@ async def test_sensors(planning_present: dict, today: date, hass: MagicMock) -> 
     data.plannings = {1: planning_present}
     data.transmissions = {1: [{}]}
     data.albums = {1: [{}, {}]}
-    data.messages = [{"vu": False, "date": "d"}, {"vu": True, "date": "d2"}]
+    data.messages = [
+        {"vu": False, "date": "d", "sender": False},
+        {"vu": True, "date": "d2", "sender": False},
+        {"vu": False, "date": "d3", "sender": True},
+    ]
     data.actualites = {"total": 3}
     data.documents = [1, 2]
     data.facturation = [1]
@@ -407,8 +411,31 @@ async def test_sensors(planning_present: dict, today: date, hass: MagicMock) -> 
     empty = OptieFamilyData()
     empty.messages = []
     for description in sensor_mod.GLOBAL_SENSORS:
-        if description.key == "messages_unread":
-            assert description.attributes_fn(empty)["last_message_date"] is None
+        if description.key in ("messages_unread_creche", "messages_unread_me"):
+            attrs = description.attributes_fn(empty)
+            assert attrs["last_message_date"] is None
+            assert attrs["last_unread_date"] is None
+            assert attrs["total"] == 0
+            assert attrs["non_lus"] == 0
+            assert description.value_fn(empty) == 0
+
+    mixed = OptieFamilyData()
+    mixed.messages = [
+        {"vu": False, "date": "2026-01-02", "sender": False},
+        {"vu": True, "date": "2026-01-01", "sender": False},
+        {"vu": False, "date": "2026-01-03", "sender": True},
+    ]
+    by_key = {d.key: d for d in sensor_mod.GLOBAL_SENSORS}
+    assert by_key["messages_unread_creche"].value_fn(mixed) == 1
+    assert by_key["messages_unread_me"].value_fn(mixed) == 1
+    creche_attrs = by_key["messages_unread_creche"].attributes_fn(mixed)
+    me_attrs = by_key["messages_unread_me"].attributes_fn(mixed)
+    assert creche_attrs["origine"] == "creche"
+    assert creche_attrs["total"] == 2
+    assert creche_attrs["last_unread_date"] == "2026-01-02"
+    assert me_attrs["origine"] == "moi"
+    assert me_attrs["total"] == 1
+    assert me_attrs["last_message_date"] == "2026-01-03"
 
     enfant = Enfant(id=9, libelle="Z")
     coordinator.data = OptieFamilyData()

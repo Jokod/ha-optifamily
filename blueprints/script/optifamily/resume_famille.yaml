@@ -18,6 +18,8 @@ blueprint:
               integration: optifamily
     messages_sensor:
       name: Capteur messages non lus
+      description: >
+        Capteur « Messages non lus (crèche) » ou « Messages non lus (moi) »
       selector:
         entity:
           filter:
@@ -42,7 +44,7 @@ sequence:
       resume: >
         OptiFamily — {{ now().strftime('%d/%m %H:%M') }}
         Présents : {{ presents | join(', ') if presents else 'aucun' }}
-        Messages non lus : {{ unread }}
+        Messages non lus ({{ state_attr(messages_entity, 'origine') | default('?') }}) : {{ unread }}
         Transmissions du jour : {{ transmissions_total }}
   - action: !input notify_action
     data:
