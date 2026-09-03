@@ -32,6 +32,9 @@ DEFAULT_SCAN_INTERVAL = 1800  # 30 minutes
 MIN_SCAN_INTERVAL = 300  # minimum 5 minutes
 MAX_SCAN_INTERVAL = 7200  # maximum 2 heures
 TOKEN_REFRESH_MARGIN = 60  # renouveler 60 s avant expiration
+# Planning calendrier : un appel API par mois/enfant, puis cache
+PLANNING_CACHE_TTL = DEFAULT_SCAN_INTERVAL  # 30 min (aligné polling)
+PLANNING_ERROR_RETRY = 300  # 5 min avant de réessayer un mois en échec
 
 
 def clamp_scan_interval(seconds: int | float | None) -> int:
@@ -60,4 +63,4 @@ STORAGE_KEY_PREFIX = f"{DOMAIN}.tokens"
 HTTP_TIMEOUT = 15
 
 # Platforms
-PLATFORMS = ["sensor"]
+PLATFORMS = ["sensor", "calendar"]

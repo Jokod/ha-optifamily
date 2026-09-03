@@ -48,7 +48,12 @@ action:
       enfant: "{{ state_attr(trigger.entity_id, 'enfant_libelle') | default('Enfant') }}"
       creneaux: "{{ state_attr(trigger.entity_id, 'creneaux') | default([]) }}"
       horaires: >
-        {% set labels = creneaux | map(attribute='label') | list %}
+        {% set raw = creneaux or [] %}
+        {% if raw and raw[0] is mapping %}
+          {% set labels = raw | map(attribute='label') | list %}
+        {% else %}
+          {% set labels = raw %}
+        {% endif %}
         {{ labels | join(', ') if labels else 'Horaires non disponibles' }}
       flag_present: !input notify_on_present
       flag_absent: !input notify_on_absent

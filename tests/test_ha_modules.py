@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, date, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -163,6 +164,15 @@ async def test_init_setup_entry_bootstrap_and_errors(hass: MagicMock) -> None:
     ):
         await optifamily_init.async_setup_entry(hass, entry)
 
+    client.ensure_authenticated = AsyncMock(side_effect=OptieFamilyApiError(503, "down"))
+    with (
+        patch.object(optifamily_init, "async_get_clientsession", return_value=MagicMock()),
+        patch.object(optifamily_init, "OptieFamilyApiClient", return_value=client),
+        patch.object(optifamily_init, "OptieFamilyCoordinator", return_value=coord),
+        pytest.raises(ConfigEntryNotReady),
+    ):
+        await optifamily_init.async_setup_entry(hass, entry)
+
 
 @pytest.mark.asyncio
 async def test_init_setup_entry_retry_refresh(hass: MagicMock) -> None:
@@ -210,6 +220,15 @@ async def test_init_setup_entry_retry_refresh(hass: MagicMock) -> None:
     ):
         await optifamily_init.async_setup_entry(hass, entry)
 
+    client.ensure_authenticated = AsyncMock(side_effect=OptieFamilyApiError(500, "x"))
+    with (
+        patch.object(optifamily_init, "async_get_clientsession", return_value=MagicMock()),
+        patch.object(optifamily_init, "OptieFamilyApiClient", return_value=client),
+        patch.object(optifamily_init, "OptieFamilyCoordinator", return_value=coord),
+        pytest.raises(ConfigEntryNotReady),
+    ):
+        await optifamily_init.async_setup_entry(hass, entry)
+
 
 @pytest.mark.asyncio
 async def test_unload_remove_reload(hass: MagicMock) -> None:
@@ -232,6 +251,14 @@ async def test_unload_remove_reload(hass: MagicMock) -> None:
 
     await optifamily_init.async_remove_entry(hass, entry)
     entry.runtime_data.async_clear_tokens.assert_awaited()
+
+    other = MagicMock()
+    other.entry_id = "e2"
+    hass.config_entries.async_entries = MagicMock(return_value=[entry, other])
+    with patch.object(optifamily_init, "async_uninstall_blueprints", AsyncMock()) as uninst:
+        await optifamily_init.async_remove_entry(hass, entry)
+        uninst.assert_not_awaited()
+    hass.config_entries.async_entries = MagicMock(return_value=[])
 
     entry.runtime_data = None
     await optifamily_init.async_remove_entry(hass, entry)
@@ -275,6 +302,62 @@ async def test_coordinator_tokens_and_update(hass: MagicMock) -> None:
     data = await coord._async_update_data()
     assert data.enfants[0]["id"] == 1
     assert data.persisted_enfants == [{"id": 1, "libelle": "A"}]
+    assert coord._planning_cache[(1, date.today().year, date.today().month)].data == {
+        "semaines": []
+    }
+
+    client.get_planning = AsyncMock(return_value={"label": "Aout"})
+    other = await coord.async_get_planning_month(1, 2020, 8)
+    assert other["label"] == "Aout"
+    assert await coord.async_get_planning_month(1, 2020, 8) == other
+    client.get_planning.assert_awaited_once()
+
+    coord.data = data
+    current = await coord.async_get_planning_month(1, date.today().year, date.today().month)
+    assert current == {"semaines": []}
+
+    client.get_planning = AsyncMock(side_effect=RuntimeError("nope"))
+    assert await coord.async_get_planning_month(9, 2019, 1) == {}
+    client.get_planning = AsyncMock(return_value={"revived": True})
+    assert await coord.async_get_planning_month(9, 2019, 1) == {}
+    client.get_planning.assert_not_called()
+
+    client.get_planning = AsyncMock(return_value=["not-a-dict"])
+    assert await coord.async_get_planning_month(9, 2018, 2) == {}
+    assert await coord.async_get_planning_month(9, 2018, 2) == {}
+    client.get_planning.assert_awaited_once()
+
+    from time import monotonic
+
+    from custom_components.optifamily.const import PLANNING_CACHE_TTL, PLANNING_ERROR_RETRY
+
+    stale_ok = coord._planning_cache[(1, 2020, 8)]
+    stale_ok.fetched_at = monotonic() - PLANNING_CACHE_TTL - 1
+    client.get_planning = AsyncMock(return_value={"label": "Aout-refresh"})
+    assert (await coord.async_get_planning_month(1, 2020, 8))["label"] == "Aout-refresh"
+
+    stale_err = coord._planning_cache[(9, 2019, 1)]
+    stale_err.fetched_at = monotonic() - PLANNING_ERROR_RETRY - 1
+    client.get_planning = AsyncMock(return_value={"label": "retry-ok"})
+    assert (await coord.async_get_planning_month(9, 2019, 1))["label"] == "retry-ok"
+
+    calls = {"n": 0}
+    started = asyncio.Event()
+    released = asyncio.Event()
+
+    async def _slow_planning(*_args: Any, **_kwargs: Any) -> dict[str, str]:
+        calls["n"] += 1
+        started.set()
+        await released.wait()
+        return {"label": "coalesced"}
+
+    client.get_planning = _slow_planning
+    first = asyncio.create_task(coord.async_get_planning_month(3, 2022, 4))
+    await started.wait()
+    second = asyncio.create_task(coord.async_get_planning_month(3, 2022, 4))
+    released.set()
+    assert await first == await second
+    assert calls["n"] == 1
 
 
 @pytest.mark.asyncio
@@ -322,12 +405,15 @@ async def test_coordinator_update_partial_and_failures(hass: MagicMock) -> None:
     from homeassistant.helpers.update_coordinator import UpdateFailed
 
     client.get_me = AsyncMock(side_effect=OptieFamilyAuthError("a"))
-    with pytest.raises(UpdateFailed):
+    with pytest.raises(ConfigEntryAuthFailed):
         await coord._async_update_data()
     client.get_me = AsyncMock(side_effect=OptieFamilyConnectionError("c"))
     with pytest.raises(UpdateFailed):
         await coord._async_update_data()
     client.get_me = AsyncMock(side_effect=OptieFamilyApiError(500, "e"))
+    with pytest.raises(UpdateFailed):
+        await coord._async_update_data()
+    client.get_me = AsyncMock(side_effect=OptieFamilySetupError("s"))
     with pytest.raises(UpdateFailed):
         await coord._async_update_data()
 
@@ -356,7 +442,7 @@ async def test_sensors(planning_present: dict, today: date, hass: MagicMock) -> 
     coordinator.data = data
     coordinator.known_enfant_ids = set()
     coordinator.scan_interval = 1800
-    coordinator.last_update_success = datetime(2026, 9, 3, tzinfo=UTC)
+    coordinator.last_sync_at = datetime(2026, 9, 3, tzinfo=UTC)
     listeners: list[Any] = []
 
     def add_listener(cb: Any) -> Any:
@@ -384,6 +470,11 @@ async def test_sensors(planning_present: dict, today: date, hass: MagicMock) -> 
         if isinstance(ent, sensor_mod.OptieFamilyLastRefreshSensor):
             assert ent.native_value is not None
             assert ent.extra_state_attributes["intervalle_minutes"] == 30
+        if isinstance(ent, sensor_mod.OptieFamilyChildPresentSensor):
+            attrs = ent.extra_state_attributes
+            assert attrs["creneaux"] == ["07:45 - 18:45"]
+            assert attrs["creneaux_libelle"] == "07:45 - 18:45"
+            assert attrs["creneaux_detail"][0]["type"] == "regulier"
         if isinstance(ent, sensor_mod._ChildSensor):
             _ = ent.native_value
             _ = ent.extra_state_attributes
@@ -406,7 +497,7 @@ async def test_sensors(planning_present: dict, today: date, hass: MagicMock) -> 
     g = sensor_mod.OptieFamilyGlobalSensor(coordinator, desc, entry)
     coordinator.data = data
     assert g.native_value == 1
-    assert g.extra_state_attributes is None
+    assert g.extra_state_attributes == {"optifamily_kind": "x"}
 
     empty = OptieFamilyData()
     empty.messages = []
@@ -508,6 +599,7 @@ async def test_config_flow_user_and_creche() -> None:
         (OptieFamilyAuthError("a"), "invalid_auth"),
         (OptieFamilyConnectionError("c"), "cannot_connect"),
         (OptieFamilySetupError("s"), "no_creche"),
+        (OptieFamilyApiError(502, "bad gateway"), "cannot_connect"),
         (RuntimeError("r"), "unknown"),
     ):
         flow = OptieFamilyConfigFlow()
@@ -558,6 +650,7 @@ async def test_config_flow_user_and_creche() -> None:
     for exc, key in (
         (OptieFamilyAuthError("a"), "invalid_auth"),
         (OptieFamilyConnectionError("c"), "cannot_connect"),
+        (OptieFamilyApiError(503, "unavailable"), "cannot_connect"),
         (RuntimeError("r"), "unknown"),
     ):
         flow = OptieFamilyConfigFlow()

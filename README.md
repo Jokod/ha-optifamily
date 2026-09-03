@@ -115,7 +115,11 @@ Puis redémarrez Home Assistant.
 | Transmissions du jour | Nouvelles transmissions |
 | Albums | Nombre d’albums photos |
 
-Les noms exacts des entités dépendent des prénoms (ex. `sensor.lea_present_aujourd_hui`).
+Les noms exacts des entités dépendent du **nom de la crèche** et des prénoms
+(ex. `sensor.ma_creche_enfants`, `sensor.lea_present_aujourd_hui`).
+Les tableaux de bord fournis retrouvent tout seuls les capteurs via l’attribut `optifamily_kind`.
+
+Un **calendrier** `calendar.optifamily_planning` expose les créneaux (navigation mois par mois dans le tableau de bord ou le panneau Calendrier).
 
 ---
 
@@ -123,28 +127,32 @@ Les noms exacts des entités dépendent des prénoms (ex. `sensor.lea_present_au
 
 ### Blueprints inclus
 
-Après installation, dans **Paramètres → Automatisations & scènes → Blueprints**  
-(ou copiez `blueprints/` vers `config/blueprints/`) :
+Après installation **HACS** (et un redémarrage), les blueprints sont copiés automatiquement dans `config/blueprints/automation/optifamily/` et `config/blueprints/script/optifamily/`. Ils apparaissent dans **Paramètres → Automatisations & scènes → Blueprints**. À la suppression de la **dernière** instance OptiFamily, ces fichiers copiés sont retirés.
 
 | Blueprint | Type | Idée |
 |---|---|---|
-| Nouveau message | Automation | Dès qu’un message non lu arrive |
+| Nouveau message | Automation | Message non lu (choisir le capteur **crèche**) |
 | Messages (seuil) | Automation | Alerte si le compteur dépasse N |
+| Nouvel album / photos | Automation | Nouvel album (par enfant) |
+| Nouvelle facture | Automation | Compteur factures en hausse |
+| Nouveau document | Automation | Compteur documents en hausse |
+| Nouvelle actualité | Automation | Compteur actualités en hausse |
+| Transmissions du jour | Automation | Nouvelles transmissions (par enfant) |
 | Rappel crèche famille | Automation | Rappel matinal pour tous les enfants |
 | Rappel crèche matin | Automation | Rappel pour un enfant précis |
 | Changement de présence | Automation | Notifie présent ↔ absent |
-| Transmissions du jour | Automation | Nouvelles transmissions (par enfant) |
 | Bilan du soir | Automation | Résumé familial le soir |
 | Résumé famille | **Script** | Résumé à la demande (bouton / autre auto) |
 
-### Tableaux de bord
+### Tableau de bord
 
-| Fichier | Niveau |
+| Fichier | Langue |
 |---|---|
-| `dashboards/optifamily.yaml` | Vue simple |
-| `dashboards/optifamily_avance.yaml` | Vues Aujourd’hui / Détail / Historique, cartes conditionnelles |
+| `dashboards/optifamily.fr.yaml` | Français |
+| `dashboards/optifamily.en.yaml` | English |
 
-Import : **Paramètres → Tableaux de bord → Ajouter → Importer YAML**, puis adaptez les `entity_id`.
+Import : **Paramètres → Tableaux de bord → Ajouter → Importer YAML**.
+Les cartes détectent l’intégration automatiquement (`optifamily_kind`).
 
 ### Package helpers (optionnel)
 

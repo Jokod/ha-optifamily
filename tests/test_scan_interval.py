@@ -47,7 +47,7 @@ def test_scan_interval_from_minutes() -> None:
 def test_last_refresh_sensor_exposes_timestamp_and_interval() -> None:
     when = datetime(2026, 9, 3, 17, 30, tzinfo=UTC)
     coordinator = SimpleNamespace(
-        last_update_success=when,
+        last_sync_at=when,
         scan_interval=1800,
         data=None,
     )
@@ -59,6 +59,7 @@ def test_last_refresh_sensor_exposes_timestamp_and_interval() -> None:
 
     assert sensor.native_value == when
     assert sensor.extra_state_attributes == {
+        "optifamily_kind": "dernier_rafraichissement",
         "intervalle_secondes": 1800,
         "intervalle_minutes": 30,
     }

@@ -35,6 +35,7 @@ def _ensure_ha_stubs() -> None:
         "homeassistant.helpers.typing",
         "homeassistant.components",
         "homeassistant.components.sensor",
+        "homeassistant.components.calendar",
     ]
     for name in modules:
         sys.modules.setdefault(name, ModuleType(name))
@@ -146,12 +147,27 @@ def _ensure_ha_stubs() -> None:
     def _callback(func: Any) -> Any:
         return func
 
+    class _CalendarEntity:
+        _attr_has_entity_name = False
+
+    @dataclass
+    class _CalendarEvent:
+        start: Any
+        end: Any
+        summary: str
+        description: str | None = None
+        uid: str | None = None
+
     # sensor
     sensor_mod = sys.modules["homeassistant.components.sensor"]
     sensor_mod.SensorEntityDescription = _SensorEntityDescription
     sensor_mod.SensorEntity = _SensorEntity
     sensor_mod.SensorDeviceClass = _SensorDeviceClass
     sensor_mod.SensorStateClass = _SensorStateClass
+
+    cal_mod = sys.modules["homeassistant.components.calendar"]
+    cal_mod.CalendarEntity = _CalendarEntity
+    cal_mod.CalendarEvent = _CalendarEvent
 
     # const
     const_mod = sys.modules["homeassistant.const"]
@@ -361,12 +377,18 @@ def fake_data() -> SimpleNamespace:
 
 
 @pytest.fixture
-def hass() -> MagicMock:
+def hass(tmp_path) -> MagicMock:
     mock = MagicMock()
     mock.config_entries.async_forward_entry_setups = AsyncMock(return_value=None)
     mock.config_entries.async_unload_platforms = AsyncMock(return_value=True)
     mock.config_entries.async_reload = AsyncMock(return_value=None)
-    mock.config_entries.async_update_entry = MagicMock()
+    mock.config_entries.async_entries = MagicMock(return_value=[])
     mock.async_create_task = MagicMock()
     mock.config_entries.flow.async_init = AsyncMock()
+    mock.config.path = lambda *parts: str(tmp_path.joinpath(*parts))
+
+    async def _add_executor_job(func: Any, *args: Any) -> Any:
+        return func(*args)
+
+    mock.async_add_executor_job = _add_executor_job
     return mock

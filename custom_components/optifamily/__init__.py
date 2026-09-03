@@ -11,11 +11,17 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import OptieFamilyApiClient
+from .blueprints import async_install_blueprints, async_uninstall_blueprints
 from .config import CONFIG_SCHEMA
 from .config import async_setup as async_setup_config
-from .const import CONF_CRECHE_ID, CONF_PASSWORD, CONF_USERNAME, PLATFORMS
+from .const import CONF_CRECHE_ID, CONF_PASSWORD, CONF_USERNAME, DOMAIN, PLATFORMS
 from .coordinator import OptieFamilyCoordinator
-from .exceptions import OptieFamilyAuthError, OptieFamilyConnectionError, OptieFamilySetupError
+from .exceptions import (
+    OptieFamilyApiError,
+    OptieFamilyAuthError,
+    OptieFamilyConnectionError,
+    OptieFamilySetupError,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -58,6 +64,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: OptieFamilyConfigEntry) 
             raise ConfigEntryNotReady(str(err)) from err
         except OptieFamilySetupError as err:
             raise ConfigEntryNotReady(str(err)) from err
+        except OptieFamilyApiError as err:
+            raise ConfigEntryNotReady(str(err)) from err
 
     try:
         await coordinator.async_config_entry_first_refresh()
@@ -71,9 +79,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: OptieFamilyConfigEntry) 
             raise ConfigEntryAuthFailed(str(err)) from err
         except OptieFamilyConnectionError as err:
             raise ConfigEntryNotReady(str(err)) from err
+        except OptieFamilyApiError as err:
+            raise ConfigEntryNotReady(str(err)) from err
 
     entry.runtime_data = coordinator
 
+    await async_install_blueprints(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
@@ -89,9 +100,16 @@ async def async_unload_entry(hass: HomeAssistant, entry: OptieFamilyConfigEntry)
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: OptieFamilyConfigEntry) -> None:
-    """Nettoyage complet à la suppression de l'intégration."""
+    """Nettoyage à la suppression : tokens, puis blueprints s'il ne reste aucune entrée."""
     if entry.runtime_data:
         await entry.runtime_data.async_clear_tokens()
+    remaining = [
+        other
+        for other in hass.config_entries.async_entries(DOMAIN)
+        if other.entry_id != entry.entry_id
+    ]
+    if not remaining:
+        await async_uninstall_blueprints(hass)
 
 
 async def async_reload_entry(hass: HomeAssistant, entry: OptieFamilyConfigEntry) -> None:

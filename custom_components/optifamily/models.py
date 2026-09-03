@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, time, timedelta
+import re
 from typing import Any
+
+_CRENEAU_BOUNDS = re.compile(r"(\d{1,2})[:hH](\d{2})\s*[-–]\s*(\d{1,2})[:hH](\d{2})")
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,3 +138,131 @@ def _count_monthly_slots(planning: dict[str, Any] | None) -> int:
         for journee in semaine.get("journees", []):
             count += len([c for c in journee.get("creneaux", []) if c.get("type") == "regulier"])
     return count
+
+
+def format_creneau_labels(creneaux: list[dict[str, Any]] | None) -> list[str]:
+    """Libellés lisibles (sans dumps YAML) pour cartes Lovelace et notifications."""
+    labels: list[str] = []
+    for creneau in creneaux or []:
+        if not isinstance(creneau, dict):
+            continue
+        label = str(creneau.get("label") or "").strip()
+        details = str(creneau.get("details") or "").strip()
+        if label and details:
+            labels.append(f"{label} ({details})")
+        elif label:
+            labels.append(label)
+        elif creneau.get("type"):
+            labels.append(str(creneau["type"]))
+    return labels
+
+
+def flatten_planning_jours(planning: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """Jours visibles du mois avec créneaux formatés (tableau de bord)."""
+    if not planning:
+        return []
+    jours: list[dict[str, Any]] = []
+    for semaine in planning.get("semaines", []):
+        for journee in semaine.get("journees", []):
+            if journee.get("visible") is False:
+                continue
+            labels = format_creneau_labels(journee.get("creneaux"))
+            if not labels:
+                continue
+            jours.append({"date": journee.get("date"), "creneaux": labels})
+    return jours
+
+
+def parse_creneau_bounds(label: str, day: date) -> tuple[datetime, datetime] | None:
+    """Extrait début/fin naïfs depuis un libellé du type `07:45 - 18:45`."""
+    match = _CRENEAU_BOUNDS.search(label or "")
+    if not match:
+        return None
+    h1, m1, h2, m2 = (int(g) for g in match.groups())
+    try:
+        start = datetime.combine(day, time(h1, m1))
+        end = datetime.combine(day, time(h2, m2))
+    except ValueError:
+        return None
+    if end <= start:
+        end = start + timedelta(hours=1)
+    return start, end
+
+
+def iter_year_months(start: datetime, end: datetime) -> list[tuple[int, int]]:
+    """Liste (année, mois) couvrant [start, end)."""
+    cursor = date(start.year, start.month, 1)
+    last = date(end.year, end.month, 1)
+    months: list[tuple[int, int]] = []
+    while cursor <= last:
+        months.append((cursor.year, cursor.month))
+        if cursor.month == 12:
+            cursor = date(cursor.year + 1, 1, 1)
+        else:
+            cursor = date(cursor.year, cursor.month + 1, 1)
+    return months
+
+
+@dataclass(frozen=True, slots=True)
+class PlanningEvent:
+    """Événement planning pour le calendrier Home Assistant."""
+
+    start: datetime | date
+    end: datetime | date
+    summary: str
+    description: str
+    uid: str
+
+
+def planning_to_events(
+    planning: dict[str, Any] | None,
+    enfant_libelle: str,
+    tzinfo: datetime.tzinfo | None = None,
+) -> list[PlanningEvent]:
+    """Convertit un planning mensuel API en événements calendrier."""
+    events: list[PlanningEvent] = []
+    if not planning:
+        return events
+    for semaine in planning.get("semaines", []):
+        for journee in semaine.get("journees", []):
+            raw_date = journee.get("date")
+            if not raw_date:
+                continue
+            try:
+                day = date.fromisoformat(str(raw_date)[:10])
+            except ValueError:
+                continue
+            for index, creneau in enumerate(journee.get("creneaux") or []):
+                if not isinstance(creneau, dict):
+                    continue
+                labels = format_creneau_labels([creneau])
+                title = labels[0] if labels else "Créneau"
+                summary = f"{enfant_libelle} — {title}"
+                description = str(creneau.get("type") or "")
+                uid = str(creneau.get("id") or f"{raw_date}-{index}")
+                bounds = parse_creneau_bounds(str(creneau.get("label") or ""), day)
+                if bounds:
+                    start, end = bounds
+                    if tzinfo is not None:
+                        start = start.replace(tzinfo=tzinfo)
+                        end = end.replace(tzinfo=tzinfo)
+                    events.append(
+                        PlanningEvent(
+                            start=start,
+                            end=end,
+                            summary=summary,
+                            description=description,
+                            uid=uid,
+                        )
+                    )
+                    continue
+                events.append(
+                    PlanningEvent(
+                        start=day,
+                        end=day + timedelta(days=1),
+                        summary=summary,
+                        description=description,
+                        uid=uid,
+                    )
+                )
+    return events

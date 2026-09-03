@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from types import SimpleNamespace
 
 from custom_components.optifamily.models import (
     Enfant,
     build_enfants_summary,
+    flatten_planning_jours,
+    format_creneau_labels,
     get_presence,
     get_today_creneaux,
     iter_enfants,
+    iter_year_months,
+    parse_creneau_bounds,
+    planning_to_events,
 )
 
 
@@ -64,3 +69,59 @@ def test_build_enfants_summary_multi(planning_present: dict, today: date) -> Non
     assert summary["noms_presents"] == ["Alice"]
     assert summary["liste"][0]["transmissions"] == 1
     assert summary["liste"][1]["albums"] == 2
+
+
+def test_format_and_flatten_creneaux(planning_present: dict, today: date) -> None:
+    assert format_creneau_labels(None) == []
+    assert format_creneau_labels(["x"]) == []
+    assert format_creneau_labels([{"type": "regulier"}]) == ["regulier"]
+    assert format_creneau_labels([{"label": "08:00 - 18:00", "details": "repas"}]) == [
+        "08:00 - 18:00 (repas)"
+    ]
+    jours = flatten_planning_jours(planning_present)
+    assert jours[0]["date"] == today.isoformat()
+    assert jours[0]["creneaux"] == ["07:45 - 18:45"]
+    hidden = {"semaines": [{"journees": [{"visible": False, "creneaux": [{"label": "x"}]}]}]}
+    assert flatten_planning_jours(hidden) == []
+    assert flatten_planning_jours(None) == []
+    assert flatten_planning_jours({}) == []
+    empty_day = {"semaines": [{"journees": [{"date": "2026-09-01", "creneaux": []}]}]}
+    assert flatten_planning_jours(empty_day) == []
+
+
+def test_parse_creneau_bounds_and_months() -> None:
+    day = date(2026, 9, 3)
+    bounds = parse_creneau_bounds("07:45 - 18:45", day)
+    assert bounds is not None
+    assert bounds[0].hour == 7
+    assert bounds[1].hour == 18
+    overnight = parse_creneau_bounds("18:00 - 08:00", day)
+    assert overnight is not None
+    assert overnight[1].hour == 19
+    assert parse_creneau_bounds("Fermé", day) is None
+    assert parse_creneau_bounds("25:00 - 26:00", day) is None
+    start = datetime(2026, 12, 20)
+    end = datetime(2027, 1, 5)
+    assert iter_year_months(start, end) == [(2026, 12), (2027, 1)]
+
+
+def test_planning_to_events(planning_present: dict, planning_absent: dict, today: date) -> None:
+    timed = planning_to_events(planning_present, "Alice")
+    assert timed[0].summary.startswith("Alice")
+    assert timed[0].start.hour == 7
+    closed = planning_to_events(planning_absent, "Bob")
+    assert closed[0].start == today
+    assert planning_to_events(None, "X") == []
+    bad = {
+        "semaines": [
+            {
+                "journees": [
+                    {"date": "not-a-date", "creneaux": [{"label": "a"}]},
+                    {"creneaux": [{"label": "b"}]},
+                    {"date": today.isoformat(), "creneaux": ["skip", {"label": "Fermeture"}]},
+                ]
+            }
+        ]
+    }
+    events = planning_to_events(bad, "Z")
+    assert any(e.summary.endswith("Fermeture") for e in events)

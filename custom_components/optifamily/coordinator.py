@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+import asyncio
+from datetime import UTC, date, datetime, timedelta
 import logging
+from time import monotonic
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -18,6 +21,8 @@ from .const import (
     CONF_ENFANTS,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    PLANNING_CACHE_TTL,
+    PLANNING_ERROR_RETRY,
     STORAGE_KEY_PREFIX,
     STORAGE_VERSION,
     clamp_scan_interval,
@@ -26,9 +31,25 @@ from .exceptions import (
     OptieFamilyApiError,
     OptieFamilyAuthError,
     OptieFamilyConnectionError,
+    OptieFamilyError,
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class _PlanningCacheEntry:
+    """Planning mensuel mis en cache pour éviter de rejouer l'API à chaque navigation."""
+
+    __slots__ = ("data", "fetched_at", "ok")
+
+    def __init__(self, data: dict[str, Any], *, ok: bool) -> None:
+        self.data = data
+        self.ok = ok
+        self.fetched_at = monotonic()
+
+    def is_fresh(self) -> bool:
+        ttl = PLANNING_CACHE_TTL if self.ok else PLANNING_ERROR_RETRY
+        return (monotonic() - self.fetched_at) < ttl
 
 
 class OptieFamilyData:
@@ -81,7 +102,11 @@ class OptieFamilyCoordinator(DataUpdateCoordinator[OptieFamilyData]):
         self.client = client
         self.entry = entry
         self.scan_interval = scan_interval
+        self.last_sync_at: datetime | None = None
         self.known_enfant_ids: set[int] = set()
+        self.known_calendar_enfant_ids: set[int] = set()
+        self._planning_cache: dict[tuple[int, int, int], _PlanningCacheEntry] = {}
+        self._planning_inflight: dict[tuple[int, int, int], asyncio.Task[dict[str, Any]]] = {}
         _LOGGER.debug("Intervalle de rafraîchissement OptiFamily : %ss", scan_interval)
         self._store: Store = Store(
             hass,
@@ -223,13 +248,76 @@ class OptieFamilyCoordinator(DataUpdateCoordinator[OptieFamilyData]):
             result.facturation = await self.client.get_facturation()
 
         except OptieFamilyAuthError as err:
-            raise UpdateFailed(f"Erreur d'authentification OptiFamily : {err}") from err
+            raise ConfigEntryAuthFailed(f"Erreur d'authentification OptiFamily : {err}") from err
         except OptieFamilyConnectionError as err:
             raise UpdateFailed(f"Connexion impossible à l'API OptiFamily : {err}") from err
         except OptieFamilyApiError as err:
             raise UpdateFailed(f"Erreur API OptiFamily : {err}") from err
+        except OptieFamilyError as err:
+            raise UpdateFailed(f"Erreur OptiFamily : {err}") from err
 
         await self.async_save_tokens()
         await self.async_sync_account_metadata(result)
 
+        for eid, planning in result.plannings.items():
+            self._planning_cache[(eid, today.year, today.month)] = _PlanningCacheEntry(
+                planning, ok=True
+            )
+
+        self.last_sync_at = datetime.now(UTC)
         return result
+
+    async def async_get_planning_month(
+        self, enfant_id: int, year: int, month: int
+    ) -> dict[str, Any]:
+        """Planning d'un mois : mois courant via le polling, autres mois en cache.
+
+        Un même mois n'est demandé qu'une fois à l'API (navigation calendrier,
+        plusieurs cartes, clics répétés). TTL 30 min, 5 min après un échec.
+        """
+        key = (enfant_id, year, month)
+        today = date.today()
+        if (
+            year == today.year
+            and month == today.month
+            and self.data
+            and enfant_id in self.data.plannings
+        ):
+            planning = self.data.plannings[enfant_id]
+            self._planning_cache[key] = _PlanningCacheEntry(planning, ok=True)
+            return planning
+
+        cached = self._planning_cache.get(key)
+        if cached is not None and cached.is_fresh():
+            return cached.data
+
+        task = self._planning_inflight.get(key)
+        if task is None or task.done():
+            task = asyncio.create_task(self._fetch_planning_month(enfant_id, year, month))
+            self._planning_inflight[key] = task
+        try:
+            return await task
+        finally:
+            current = self._planning_inflight.get(key)
+            if current is task and task.done():
+                del self._planning_inflight[key]
+
+    async def _fetch_planning_month(self, enfant_id: int, year: int, month: int) -> dict[str, Any]:
+        key = (enfant_id, year, month)
+        try:
+            planning = await self.client.get_planning(enfant_id, year, month)
+        except Exception as err:
+            _LOGGER.warning(
+                "Impossible de récupérer le planning %s-%02d de l'enfant %s : %s",
+                year,
+                month,
+                enfant_id,
+                err,
+            )
+            self._planning_cache[key] = _PlanningCacheEntry({}, ok=False)
+            return {}
+        if not isinstance(planning, dict):
+            self._planning_cache[key] = _PlanningCacheEntry({}, ok=False)
+            return {}
+        self._planning_cache[key] = _PlanningCacheEntry(planning, ok=True)
+        return planning

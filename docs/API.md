@@ -408,7 +408,7 @@ Toujours remplacer par : `EMAIL`, `PASSWORD`, `ACCESS_TOKEN`, `CRECHE_ID`, `ENFA
 | Auth | `/auth/pre-login`, `/auth/login`, `/auth/refresh` |
 | Métadonnées compte / crèche | `/me` |
 | Liste enfants | `/enfants` |
-| Présence / créneaux | `/enfant/{id}/planning/...` |
+| Présence / créneaux | `/enfant/{id}/planning/...` (+ plateforme `calendar`) |
 | Transmissions | `/enfant/{id}/transmissions/{date}` |
 | Albums | `/enfant/{id}/albums` |
 | Messages non lus (crèche / moi) | `/messages` (`sender`) |

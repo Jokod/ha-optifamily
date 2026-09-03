@@ -93,8 +93,10 @@ Décrivez :
 | `const.py` | Constantes centralisées |
 | `exceptions.py` | Hiérarchie d'exceptions |
 | `strings.json` / `translations/` | Internationalisation |
-| `blueprints/automation/optifamily/` | Blueprints d'automatisation |
-| `dashboards/optifamily.yaml` | Modèle de tableau de bord Lovelace |
+| `blueprints.py` | Copie des blueprints vers `config/blueprints` au setup |
+| `blueprints/automation/` | YAML d'automatisation (emballés dans le composant HACS) |
+| `dashboards/optifamily.fr.yaml` | Tableau de bord Lovelace (FR) |
+| `dashboards/optifamily.en.yaml` | Lovelace dashboard (EN) |
 
 ### Règles de sécurité (obligatoires)
 

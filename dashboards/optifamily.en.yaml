@@ -1,0 +1,240 @@
+# OptiFamily dashboard — English
+#
+# Import: Settings → Dashboards → Add → Import YAML
+# Cards discover sensors via `optifamily_kind`.
+# Calendar entity: calendar.optifamily_planning
+# Presence values from the integration stay French (`présent` / `absent`).
+
+title: OptiFamily
+views:
+  - title: Family
+    path: family
+    icon: mdi:baby-face-outline
+    type: sections
+    max_columns: 2
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: Today
+            heading_style: title
+            icon: mdi:white-balance-sunny
+          - type: markdown
+            content: |
+              {% set _j = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] %}
+              {% set _m = ['January','February','March','April','May','June','July','August','September','October','November','December'] %}
+              {% set enfants_s = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'enfants') | list %}
+              {% set liste = (enfants_s[0].attributes.liste if enfants_s else []) or [] %}
+              {% set presents = liste | selectattr('presence', 'equalto', 'présent') | list %}
+              {% set msg_c = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'messages_unread_creche') | list %}
+              {% set msg_m = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'messages_unread_me') | list %}
+              {% set nc = (msg_c[0].state | int(0)) if msg_c else 0 %}
+              {% set nm = (msg_m[0].state | int(0)) if msg_m else 0 %}
+              {% set sync = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'dernier_rafraichissement') | list %}
+
+              ### {{ _j[now().weekday()] }} {{ now().day }} {{ _m[now().month - 1] }} {{ now().year }}
+
+              {% if liste | length == 0 %}
+              *OptiFamily integration not found, or no children.*
+              {% elif presents | length == liste | length and liste | length > 0 %}
+              Everyone is **at daycare** today.
+              {% elif presents | length == 0 %}
+              Nobody is scheduled at daycare today.
+              {% else %}
+              **{{ presents | length }}** / **{{ liste | length }}** at daycare
+              — {{ presents | map(attribute='libelle') | join(', ') }}
+              {% endif %}
+
+              {% if nc > 0 or nm > 0 %}
+
+              ---
+              {% if nc > 0 %}Daycare message{{ 's' if nc > 1 }}: **{{ nc }}** unread{% endif %}
+              {% if nc > 0 and nm > 0 %} · {% endif %}
+              {% if nm > 0 %}Sent, still unread: **{{ nm }}**{% endif %}
+              {% endif %}
+              {% if sync %}
+
+              *Updated {{ relative_time(as_datetime(sync[0].state)) if sync[0].state not in ['unknown', 'unavailable', none] else '—'}} · every {{ sync[0].attributes.intervalle_minutes | default('?') }} min*
+              {% endif %}
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Children
+            heading_style: title
+            icon: mdi:human-male-female-child
+          - type: markdown
+            content: |
+              {% set enfants_s = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'enfants') | list %}
+              {% set liste = (enfants_s[0].attributes.liste if enfants_s else []) or [] %}
+              {% if liste | length == 0 %}
+              *No children detected.*
+              {% else %}
+              {% for e in liste %}
+              {% if not loop.first %}
+
+              ---
+              {% endif %}
+              {% set presence_en = 'Present' if e.presence == 'présent' else ('Absent' if e.presence == 'absent' else 'Unknown') %}
+              ### {% if e.presence == 'présent' %}🟢{% elif e.presence == 'absent' %}⚪{% else %}❓{% endif %} {{ e.libelle }}
+
+              **{{ presence_en }}**{% if e.creneaux %} · {{ e.creneaux | join(' · ') }}{% endif %}
+              {% set extras = (e.creneaux_detail or []) | rejectattr('type', 'equalto', 'regulier') | list %}
+              {% if extras %}
+
+              {% for c in extras %}
+              _{% if c.type == 'fermeture' %}Closed{% else %}{{ c.type }}{% endif %}{% if c.label %} — {{ c.label }}{% endif %}{% if c.details %} ({{ c.details }}){% endif %}_
+              {% endfor %}
+              {% endif %}
+
+              | Daily notes | Albums | Slots this month |
+              | :---: | :---: | :---: |
+              | {{ e.transmissions | default(0) }} | {{ e.albums | default(0) }} | {{ e.creneaux_mois | default(0) }} |
+              {% endfor %}
+              {% endif %}
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Messages
+            heading_style: title
+            icon: mdi:message-text-outline
+          - type: markdown
+            content: |
+              {% set msg_c = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'messages_unread_creche') | list %}
+              {% set msg_m = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'messages_unread_me') | list %}
+              {% set c = msg_c[0] if msg_c else none %}
+              {% set m = msg_m[0] if msg_m else none %}
+              {% set nc = c.state | int(0) if c else 0 %}
+              {% set nm = m.state | int(0) if m else 0 %}
+
+              {% if not c and not m %}
+              *Message sensors not found.*
+              {% elif nc == 0 and nm == 0 %}
+              No unread messages.
+              {% else %}
+              {% if nc > 0 %}
+              #### From daycare
+              **{{ nc }}** unread / {{ c.attributes.total | default('?') }} total
+              {% set d = as_datetime(c.attributes.last_unread_date) if c.attributes.last_unread_date else none %}
+              {% if d %}Latest: {{ d.strftime('%d/%m at %H:%M') }}{% endif %}
+              {% endif %}
+              {% if nm > 0 %}
+              #### Sent (me)
+              **{{ nm }}** still unread / {{ m.attributes.total | default('?') }} total
+              {% set d = as_datetime(m.attributes.last_unread_date) if m.attributes.last_unread_date else none %}
+              {% if d %}Latest: {{ d.strftime('%d/%m at %H:%M') }}{% endif %}
+              {% endif %}
+              {% endif %}
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Account
+            heading_style: title
+            icon: mdi:office-building-outline
+          - type: markdown
+            content: |
+              {% set actus = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'actualites_total') | list %}
+              {% set docs = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'documents_total') | list %}
+              {% set fact = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'facturation_total') | list %}
+              {% set sync = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'dernier_rafraichissement') | list %}
+
+              | News | Documents | Invoices |
+              | :---: | :---: | :---: |
+              | {{ actus[0].state if actus else '—' }} | {{ docs[0].state if docs else '—' }} | {{ fact[0].state if fact else '—' }} |
+
+              {% if sync and sync[0].state not in ['unknown', 'unavailable', none] %}
+              Last refresh: **{{ as_datetime(sync[0].state).strftime('%d/%m at %H:%M') }}**
+              (every **{{ sync[0].attributes.intervalle_minutes | default('?') }}** min)
+              {% endif %}
+
+      - type: grid
+        column_span: 2
+        cards:
+          - type: heading
+            heading: Next 7 days
+            heading_style: title
+            icon: mdi:calendar-week
+          - type: markdown
+            content: |
+              {% set _j = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}
+              {% set slots = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'planning_slots') | list %}
+              {% set start = now().replace(hour=0, minute=0, second=0, microsecond=0) %}
+              {% set end = start + timedelta(days=7) %}
+              {% if slots | length == 0 %}
+              *Monthly schedule not available.*
+              {% else %}
+              {% for s in slots %}
+              **{{ s.attributes.enfant_libelle or s.name }}**
+              {% set rows = namespace(n=0) %}
+              {% for j in s.attributes.jours or [] %}
+              {% set jd = as_datetime(j.date) if j.date else none %}
+              {% if jd and jd >= start and jd < end %}
+              {% set rows.n = rows.n + 1 %}
+              - **{{ _j[jd.weekday()] }} {{ jd.strftime('%d/%m') }}** — {{ j.creneaux | join(' · ') }}
+              {% endif %}
+              {% endfor %}
+              {% if rows.n == 0 %}
+              _No slots in the next 7 days._
+              {% endif %}
+
+              {% endfor %}
+              {% endif %}
+
+  - title: Schedule
+    path: schedule
+    icon: mdi:calendar-month
+    type: sections
+    max_columns: 2
+    sections:
+      - type: grid
+        column_span: 2
+        cards:
+          - type: heading
+            heading: Calendar
+            heading_style: title
+            icon: mdi:calendar-clock
+          - type: calendar
+            initial_view: dayGridMonth
+            entities:
+              - calendar.optifamily_planning
+          - type: markdown
+            content: |
+              Use the calendar arrows to change month (one API call per month, then cached).
+              {% set cals = states.calendar | selectattr('attributes.optifamily_kind', 'eq', 'planning') | list %}
+              {% if cals %}
+              Per child: {{ cals | map(attribute='entity_id') | join(', ') }}
+              {% endif %}
+
+      - type: grid
+        column_span: 2
+        cards:
+          - type: heading
+            heading: Month from the API
+            heading_style: title
+            icon: mdi:calendar-text
+          - type: markdown
+            content: |
+              {% set _j = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}
+              {% set slots = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'planning_slots') | list %}
+              {% if slots | length == 0 %}
+              *No schedule loaded.*
+              {% else %}
+              {% for s in slots %}
+              ### {{ s.attributes.enfant_libelle or s.name }}
+              {{ s.attributes.label or '' }}
+              {% if s.attributes.previous or s.attributes.next %}
+              {{ s.attributes.previous or '—' }} ← → {{ s.attributes.next or '—' }}
+              {% endif %}
+
+              {% for j in s.attributes.jours or [] %}
+              {% set jd = as_datetime(j.date) if j.date else none %}
+              - {% if jd %}**{{ _j[jd.weekday()] }} {{ jd.strftime('%d/%m') }}**{% else %}{{ j.date }}{% endif %} — {{ j.creneaux | join(' · ') }}
+              {% endfor %}
+              {% if (s.attributes.jours or []) | length == 0 %}
+              _No slots this month._
+              {% endif %}
+
+              {% endfor %}
+              {% endif %}

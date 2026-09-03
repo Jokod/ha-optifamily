@@ -25,6 +25,8 @@ from .coordinator import OptieFamilyCoordinator, OptieFamilyData
 from .models import (
     Enfant,
     build_enfants_summary,
+    flatten_planning_jours,
+    format_creneau_labels,
     get_presence,
     get_today_creneaux,
     iter_enfants,
@@ -228,9 +230,12 @@ class OptieFamilyGlobalSensor(_OptieFamilyBaseSensor):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any] | None:
+        attrs: dict[str, Any] = {
+            "optifamily_kind": self.entity_description.key,
+        }
         if self.entity_description.attributes_fn:
-            return self.entity_description.attributes_fn(self.coordinator.data)
-        return None
+            attrs.update(self.entity_description.attributes_fn(self.coordinator.data))
+        return attrs
 
 
 class OptieFamilyLastRefreshSensor(_OptieFamilyBaseSensor):
@@ -247,12 +252,13 @@ class OptieFamilyLastRefreshSensor(_OptieFamilyBaseSensor):
 
     @property
     def native_value(self) -> Any:
-        return self.coordinator.last_update_success
+        return getattr(self.coordinator, "last_sync_at", None)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         interval = getattr(self.coordinator, "scan_interval", None)
         return {
+            "optifamily_kind": "dernier_rafraichissement",
             "intervalle_secondes": interval,
             "intervalle_minutes": (interval // 60) if interval else None,
         }
@@ -306,7 +312,10 @@ class OptieFamilyChildPresentSensor(_ChildSensor):
         return {
             "enfant_id": self._enfant.id,
             "enfant_libelle": self._enfant.libelle,
-            "creneaux": [
+            "optifamily_kind": "present",
+            "creneaux": format_creneau_labels(creneaux),
+            "creneaux_libelle": " · ".join(format_creneau_labels(creneaux)),
+            "creneaux_detail": [
                 {
                     "type": c.get("type"),
                     "label": c.get("label"),
@@ -344,12 +353,19 @@ class OptieFamilyChildPlanningSlotsSensor(_ChildSensor):
     def extra_state_attributes(self) -> dict[str, Any]:
         planning = self.coordinator.data.plannings.get(self._enfant.id)
         if not planning:
-            return {"enfant_id": self._enfant.id}
+            return {
+                "enfant_id": self._enfant.id,
+                "enfant_libelle": self._enfant.libelle,
+                "optifamily_kind": "planning_slots",
+            }
         return {
             "enfant_id": self._enfant.id,
+            "enfant_libelle": self._enfant.libelle,
+            "optifamily_kind": "planning_slots",
             "label": planning.get("label"),
             "previous": planning.get("previous"),
             "next": planning.get("next"),
+            "jours": flatten_planning_jours(planning),
         }
 
 

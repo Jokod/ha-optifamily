@@ -26,12 +26,11 @@ def test_source_never_calls_profil() -> None:
 
 def test_api_error_truncates_message() -> None:
     """Les erreurs API ne doivent pas remonter de payloads entiers."""
-    import inspect
+    from custom_components.optifamily import api as api_mod
 
-    from custom_components.optifamily.api import OptieFamilyApiClient
-
-    source = inspect.getsource(OptieFamilyApiClient._request)
-    assert "text[:200]" in source
+    source = Path(api_mod.__file__).read_text(encoding="utf-8")
+    assert "[:200]" in source
+    assert len(api_mod._error_detail(500, "x" * 500)) == 200
 
 
 def test_no_eval_exec_in_package() -> None:

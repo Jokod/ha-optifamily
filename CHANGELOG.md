@@ -7,6 +7,22 @@ et ce projet adhère au [Versionnement Sémantique](https://semver.org/lang/fr/)
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-09-03
+
+### Added
+- Calendrier Home Assistant (`calendar.optifamily_planning`) pour naviguer les créneaux mois par mois
+- Attribut `optifamily_kind` pour que les tableaux de bord trouvent les capteurs même si l’entity_id est préfixé du nom de crèche
+- Cache planning calendrier (TTL 30 min, coalescing, retry 5 min) : changer de mois ne rejoue pas l’API
+- Blueprints copiés automatiquement vers `config/blueprints` au setup (HACS n’installe pas la racine `blueprints/`)
+- Blueprints album, facture, document et actualité
+
+### Changed
+- Créneaux du jour affichés en texte (`07:45 - 18:45`) au lieu d’un dump YAML
+- Capteur « Dernier rafraîchissement » : horodatage réel (`last_sync_at`) au lieu du booléen HA `last_update_success` (affichage « Indisponible »)
+- Tableaux de bord : un YAML français et un anglais (`dashboards/optifamily.fr.yaml`, `optifamily.en.yaml`)
+- Désinstallation : tokens + blueprints copiés (si plus aucune entrée OptiFamily) ; suppression nominative uniquement (pas de `rmtree` du dossier)
+- Erreurs API : 403 → ré-auth, corps JSON `message` extrait, timeouts/`ClientError` unifiés, formes de réponse anormales normalisées, 401 polling → reconfiguration HA
+
 ## [1.0.2] - 2026-09-03
 
 ### Changed

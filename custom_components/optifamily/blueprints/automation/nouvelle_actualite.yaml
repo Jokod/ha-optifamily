@@ -1,0 +1,42 @@
+blueprint:
+  name: OptiFamily — Nouvelle actualité
+  description: >
+    Notifie lorsque le compteur d'actualités de la crèche augmente.
+  domain: automation
+  author: ha-optifamily
+  homeassistant:
+    min_version: 2025.9.0
+  input:
+    actualites_sensor:
+      name: Capteur actualités
+      description: Capteur OptiFamily « Actualités »
+      selector:
+        entity:
+          filter:
+            - domain: sensor
+              integration: optifamily
+    notify_action:
+      name: Action de notification
+      selector:
+        action:
+
+trigger:
+  - platform: state
+    entity_id: !input actualites_sensor
+
+condition:
+  - condition: template
+    value_template: >
+      {{ trigger.to_state.state not in ['unknown', 'unavailable']
+         and trigger.from_state.state not in ['unknown', 'unavailable']
+         and trigger.to_state.state | int(0) > trigger.from_state.state | int(0) }}
+
+action:
+  - variables:
+      count: "{{ states(input.actualites_sensor) | int(0) }}"
+  - action: !input notify_action
+    data:
+      title: "OptiFamily — Actualité"
+      message: "{{ count }} actualité(s) sur optiFamily."
+
+mode: single

@@ -40,6 +40,7 @@ from .const import (
     scan_interval_from_minutes,
 )
 from .exceptions import (
+    OptieFamilyApiError,
     OptieFamilyAuthError,
     OptieFamilyConnectionError,
     OptieFamilySetupError,
@@ -100,6 +101,8 @@ class OptieFamilyConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "cannot_connect"
             except OptieFamilySetupError:
                 errors["base"] = "no_creche"
+            except OptieFamilyApiError:
+                errors["base"] = "cannot_connect"
             except Exception:
                 _LOGGER.exception("Erreur inattendue lors de la découverte du compte")
                 errors["base"] = "unknown"
@@ -144,6 +147,8 @@ class OptieFamilyConfigFlow(ConfigFlow, domain=DOMAIN):
             except OptieFamilyAuthError:
                 errors["base"] = "invalid_auth"
             except OptieFamilyConnectionError:
+                errors["base"] = "cannot_connect"
+            except OptieFamilyApiError:
                 errors["base"] = "cannot_connect"
             except Exception:
                 _LOGGER.exception("Erreur inattendue lors de l'authentification")

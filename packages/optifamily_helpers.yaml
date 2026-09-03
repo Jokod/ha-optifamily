@@ -22,17 +22,22 @@ template:
         unique_id: optifamily_resume_texte
         icon: mdi:text-box-outline
         state: >
-          {% set liste = state_attr('sensor.optifamily_enfants', 'liste') or [] %}
+          {% set enfants_s = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'enfants') | list %}
+          {% set liste = (enfants_s[0].attributes.liste if enfants_s else []) or [] %}
           {% set presents = liste | selectattr('presence', 'equalto', 'présent')
                                    | map(attribute='libelle') | list %}
-          {{ presents | length }} présent(s) · {{ states('sensor.optifamily_messages_non_lus_creche') | int(0) }} msg crèche · {{ states('sensor.optifamily_messages_non_lus_moi') | int(0) }} msg moi
+          {% set msg_c = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'messages_unread_creche') | list %}
+          {% set msg_m = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'messages_unread_me') | list %}
+          {{ presents | length }} présent(s) · {{ (msg_c[0].state if msg_c else 0) | int(0) }} msg crèche · {{ (msg_m[0].state if msg_m else 0) | int(0) }} msg moi
         attributes:
           presents: >
-            {% set liste = state_attr('sensor.optifamily_enfants', 'liste') or [] %}
+            {% set enfants_s = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'enfants') | list %}
+            {% set liste = (enfants_s[0].attributes.liste if enfants_s else []) or [] %}
             {{ liste | selectattr('presence', 'equalto', 'présent')
                      | map(attribute='libelle') | list }}
           detail: >
-            {% set liste = state_attr('sensor.optifamily_enfants', 'liste') or [] %}
+            {% set enfants_s = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'enfants') | list %}
+            {% set liste = (enfants_s[0].attributes.liste if enfants_s else []) or [] %}
             {% for e in liste -%}
             {{ e.libelle }}: {{ e.presence }}{% if e.creneaux %} ({{ e.creneaux | join(', ') }}){% endif %}
             {% endfor %}

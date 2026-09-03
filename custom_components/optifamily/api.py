@@ -30,6 +30,7 @@ from .exceptions import (
     OptieFamilyApiError,
     OptieFamilyAuthError,
     OptieFamilyConnectionError,
+    OptieFamilyError,
     OptieFamilySetupError,
 )
 
@@ -77,6 +78,40 @@ def _parse_creches_from_response(data: Any) -> list[dict[str, Any]]:
             seen.add(creche["id"])
             normalized.append(creche)
     return normalized
+
+
+def _as_list(data: Any) -> list[Any]:
+    """Normalise une réponse liste (None / enveloppe JSON → liste)."""
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        for key in ("data", "content", "items", "enfants", "messages"):
+            value = data.get(key)
+            if isinstance(value, list):
+                return value
+    return []
+
+
+def _as_dict(data: Any) -> dict[str, Any]:
+    """Normalise une réponse objet (None → dict vide)."""
+    return data if isinstance(data, dict) else {}
+
+
+def _error_detail(status: int, text: str) -> str:
+    """Extrait un message d'erreur court, sans dump de payload."""
+    snippet = (text or "").strip()[:200]
+    if not snippet:
+        return f"HTTP {status}"
+    try:
+        payload = json_lib.loads(snippet)
+    except json_lib.JSONDecodeError:
+        return snippet
+    if isinstance(payload, dict):
+        for key in ("message", "error", "detail"):
+            value = payload.get(key)
+            if value:
+                return str(value)[:200]
+    return snippet
 
 
 def normalize_enfants(enfants: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -250,16 +285,16 @@ class OptieFamilyApiClient:
 
     async def get_me(self) -> dict[str, Any]:
         """Retourne les informations du compte connecté."""
-        return await self._request("GET", API_ME)  # type: ignore[return-value]
+        return _as_dict(await self._request("GET", API_ME))
 
     async def get_enfants(self) -> list[dict[str, Any]]:
         """Retourne la liste des enfants du compte."""
-        return await self._request("GET", API_ENFANTS)  # type: ignore[return-value]
+        return _as_list(await self._request("GET", API_ENFANTS))
 
     async def get_planning(self, enfant_id: int, year: int, month: int) -> dict[str, Any]:
         """Retourne le planning mensuel d'un enfant."""
         path = API_PLANNING.format(enfant_id=enfant_id, year=year, month=month)
-        return await self._request("GET", path)  # type: ignore[return-value]
+        return _as_dict(await self._request("GET", path))
 
     async def get_planning_current_month(self, enfant_id: int) -> dict[str, Any]:
         """Raccourci : planning du mois courant."""
@@ -273,21 +308,21 @@ class OptieFamilyApiClient:
         if isinstance(transmission_date, date):
             transmission_date = transmission_date.isoformat()
         path = API_TRANSMISSIONS.format(enfant_id=enfant_id, date=transmission_date)
-        return await self._request("GET", path)  # type: ignore[return-value]
+        return _as_list(await self._request("GET", path))
 
     async def get_albums(self, enfant_id: int) -> list[dict[str, Any]]:
         """Retourne les albums d'un enfant."""
         path = API_ALBUMS.format(enfant_id=enfant_id)
-        return await self._request("GET", path)  # type: ignore[return-value]
+        return _as_list(await self._request("GET", path))
 
     async def get_actualites(self, from_: int = 0, to: int = 20) -> dict[str, Any]:
         """Retourne les actualités."""
         path = API_ACTUALITES.format(from_=from_, to=to)
-        return await self._request("GET", path)  # type: ignore[return-value]
+        return _as_dict(await self._request("GET", path))
 
     async def get_messages(self) -> list[dict[str, Any]]:
         """Retourne les messages de la famille."""
-        return await self._request("GET", API_MESSAGES)  # type: ignore[return-value]
+        return _as_list(await self._request("GET", API_MESSAGES))
 
     async def get_documents(self, creche_id: int | None = None) -> list[dict[str, Any]]:
         """Retourne les documents de la crèche."""
@@ -295,11 +330,11 @@ class OptieFamilyApiClient:
         if cid is None:
             raise OptieFamilySetupError("Identifiant de crèche non disponible")
         path = API_DOCUMENTS.format(creche_id=cid)
-        return await self._request("GET", path)  # type: ignore[return-value]
+        return _as_list(await self._request("GET", path))
 
     async def get_facturation(self) -> list[dict[str, Any]]:
         """Retourne les informations de facturation."""
-        return await self._request("GET", API_FACTURATION)  # type: ignore[return-value]
+        return _as_list(await self._request("GET", API_FACTURATION))
 
     # ------------------------------------------------------------------
     # Couche transport
@@ -344,9 +379,12 @@ class OptieFamilyApiClient:
                 if resp.status == 401:
                     raise OptieFamilyAuthError("Identifiants invalides ou token expiré")
 
+                if resp.status == 403:
+                    raise OptieFamilyAuthError("Accès refusé par l'API OptiFamily")
+
                 if resp.status >= 400:
                     text = await resp.text()
-                    raise OptieFamilyApiError(resp.status, text[:200])
+                    raise OptieFamilyApiError(resp.status, _error_detail(resp.status, text))
 
                 # logout / remove-fcm-token : corps vide observé
                 if resp.status == 204:
@@ -360,9 +398,13 @@ class OptieFamilyApiClient:
                 except json_lib.JSONDecodeError as err:
                     raise OptieFamilyApiError(resp.status, "Réponse JSON invalide") from err
 
-        except aiohttp.ServerTimeoutError as err:
+        except OptieFamilyError:
+            raise
+        except TimeoutError as err:
             raise OptieFamilyConnectionError(f"Timeout API OptiFamily : {err}") from err
         except aiohttp.ClientConnectionError as err:
             raise OptieFamilyConnectionError(
                 f"Impossible de contacter l'API OptiFamily : {err}"
             ) from err
+        except aiohttp.ClientError as err:
+            raise OptieFamilyConnectionError(f"Erreur réseau OptiFamily : {err}") from err

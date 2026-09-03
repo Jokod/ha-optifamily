@@ -11,6 +11,9 @@ import pytest
 
 from custom_components.optifamily.api import (
     OptieFamilyApiClient,
+    _as_dict,
+    _as_list,
+    _error_detail,
     _normalize_creche,
     _parse_creches_from_response,
     normalize_enfants,
@@ -196,7 +199,7 @@ async def test_request_errors(api_client: OptieFamilyApiClient) -> None:
 
     with aioresponses() as mocked:
         mocked.get(_url("/api/auth/v3/me"), status=204, body="")
-        assert await api_client.get_me() is None
+        assert await api_client.get_me() == {}
 
     with aioresponses() as mocked:
         mocked.get(_url("/api/auth/v3/me"), status=200, body="{not-json")
@@ -212,6 +215,40 @@ async def test_request_errors(api_client: OptieFamilyApiClient) -> None:
         mocked.get(_url("/api/auth/v3/me"), exception=aiohttp.ServerTimeoutError())
         with pytest.raises(OptieFamilyConnectionError):
             await api_client.get_me()
+
+    with aioresponses() as mocked:
+        mocked.get(_url("/api/auth/v3/me"), status=403, body="forbidden")
+        with pytest.raises(OptieFamilyAuthError, match="Accès refusé"):
+            await api_client.get_me()
+
+    with aioresponses() as mocked:
+        mocked.get(
+            _url("/api/auth/v3/me"),
+            status=400,
+            body='{"status":400,"message":"Required request body is missing"}',
+        )
+        with pytest.raises(OptieFamilyApiError, match="Required request body"):
+            await api_client.get_me()
+
+    with aioresponses() as mocked:
+        mocked.get(_url("/api/auth/v3/me"), exception=aiohttp.ClientError())
+        with pytest.raises(OptieFamilyConnectionError, match="Erreur réseau"):
+            await api_client.get_me()
+
+
+def test_response_shape_and_error_detail() -> None:
+    assert _as_list(None) == []
+    assert _as_list([1]) == [1]
+    assert _as_list({"enfants": [{"id": 1}]}) == [{"id": 1}]
+    assert _as_list({"x": 1}) == []
+    assert _as_dict(None) == {}
+    assert _as_dict({"a": 1}) == {"a": 1}
+    assert _error_detail(400, "") == "HTTP 400"
+    assert _error_detail(400, '{"message":"oops"}') == "oops"
+    assert _error_detail(500, '{"error":"boom"}') == "boom"
+    assert _error_detail(502, '{"foo":1}') == '{"foo":1}'
+    assert _error_detail(500, "plain") == "plain"
+    assert _error_detail(500, "[1]") == "[1]"
 
 
 @pytest.mark.asyncio
