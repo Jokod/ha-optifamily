@@ -56,8 +56,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: OptieFamilyConfigEntry) 
     if not has_tokens or client.creche_id is None:
         try:
             if client.creche_id is None:
-                creches = await client.discover_creches()
-                client.set_creche_id(creches[0]["id"])
+                # Pas de fallback silencieux creches[0] si l'entry a un id
+                configured = entry.data.get(CONF_CRECHE_ID)
+                if configured is not None:
+                    client.set_creche_id(int(configured))
+                else:
+                    creches = await client.discover_creches()
+                    if len(creches) != 1:
+                        raise OptieFamilySetupError(
+                            "Plusieurs crèches disponibles — reconfigurez l'entrée."
+                        )
+                    client.set_creche_id(creches[0]["id"])
             await client.ensure_authenticated()
             await coordinator.async_save_tokens()
         except OptieFamilyAuthError as err:
@@ -98,8 +107,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: OptieFamilyConfigEntry) 
 async def async_unload_entry(hass: HomeAssistant, entry: OptieFamilyConfigEntry) -> bool:
     """Supprime l'entrée de config."""
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        with contextlib.suppress(Exception):
-            await entry.runtime_data.client.logout()
+        username = entry.data.get(CONF_USERNAME)
+        other_active = [
+            other
+            for other in hass.config_entries.async_entries(DOMAIN)
+            if other.entry_id != entry.entry_id
+            and other.data.get(CONF_USERNAME) == username
+            and getattr(other, "runtime_data", None) is not None
+        ]
+        if not other_active:
+            with contextlib.suppress(Exception):
+                await entry.runtime_data.client.logout()
+        else:
+            _LOGGER.debug("Logout OptiFamily ignoré : une autre entry du même compte reste active")
     return unload_ok
 
 

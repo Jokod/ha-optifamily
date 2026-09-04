@@ -14,6 +14,22 @@ CONF_PAUSE_UPDATES = "pause_updates"
 CONF_PAUSE_UPDATES_START = "pause_updates_start"
 CONF_PAUSE_UPDATES_END = "pause_updates_end"
 CONF_PAUSE_WHEN_CLOSED = "pause_when_closed"
+CONF_ENABLED_ENFANTS = "enabled_enfants"
+CONF_DOCUMENTS_SCOPE = "documents_scope"
+
+# DayContext / phase famille
+PHASE_LEAD_MINUTES = 90
+DAY_TICK_SECONDS = 60
+
+# Documents select (dashboard)
+DOCUMENTS_SCOPE_CRECHE = "creche"
+DOCUMENTS_SCOPE_FAMILLE = "famille"
+DOCUMENTS_SCOPE_ENFANT = "enfant"
+DOCUMENTS_SCOPES = (
+    DOCUMENTS_SCOPE_CRECHE,
+    DOCUMENTS_SCOPE_FAMILLE,
+    DOCUMENTS_SCOPE_ENFANT,
+)
 
 # API
 API_BASE_URL = "https://back.opticreche.fr"
@@ -114,4 +130,4 @@ STORAGE_KEY_PREFIX = f"{DOMAIN}.tokens"
 HTTP_TIMEOUT = 15
 
 # Platforms
-PLATFORMS = ["sensor", "calendar"]
+PLATFORMS = ["sensor", "binary_sensor", "calendar"]

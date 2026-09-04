@@ -18,6 +18,7 @@ from .api import OptieFamilyApiClient, normalize_enfants
 from .const import (
     CONF_CRECHE_ID,
     CONF_CRECHE_NAME,
+    CONF_ENABLED_ENFANTS,
     CONF_ENFANTS,
     CONF_PAUSE_UPDATES,
     CONF_PAUSE_UPDATES_END,
@@ -28,6 +29,8 @@ from .const import (
     DEFAULT_PAUSE_UPDATES_START,
     DEFAULT_PAUSE_WHEN_CLOSED,
     DEFAULT_SCAN_INTERVAL,
+    DOCUMENTS_SCOPE_CRECHE,
+    DOCUMENTS_SCOPES,
     DOMAIN,
     PLANNING_CACHE_TTL,
     PLANNING_ERROR_RETRY,
@@ -36,13 +39,14 @@ from .const import (
     clamp_scan_interval,
     is_update_paused,
 )
+from .devices import async_purge_enfant_devices
 from .exceptions import (
     OptieFamilyApiError,
     OptieFamilyAuthError,
     OptieFamilyConnectionError,
     OptieFamilyError,
 )
-from .models import is_creche_closed_for_family
+from .models import is_creche_closed_for_family, iter_enfants, iter_enfants_enabled
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -140,12 +144,19 @@ class OptieFamilyCoordinator(DataUpdateCoordinator[OptieFamilyData]):
         self._planning_inflight: dict[tuple[int, int, int], asyncio.Task[dict[str, Any]]] = {}
         self.transmissions_view_date: date = date.today()
         self.transmissions_journal: dict[int, list[dict[str, Any]]] = {}
+        self.documents_scope: str = DOCUMENTS_SCOPE_CRECHE
+        self.documents_enfant_id: int | None = None
         _LOGGER.debug("Intervalle de rafraîchissement OptiFamily : %ss", scan_interval)
         self._store: Store = Store(
             hass,
             STORAGE_VERSION,
             f"{STORAGE_KEY_PREFIX}.{entry.entry_id}",
         )
+        self.client.set_token_listener(self._schedule_save_tokens)
+
+    def _schedule_save_tokens(self) -> None:
+        """Persiste les tokens après chaque login/refresh réussi."""
+        self.hass.async_create_task(self.async_save_tokens())
 
     # ------------------------------------------------------------------
     # Persistance des tokens
@@ -196,11 +207,26 @@ class OptieFamilyCoordinator(DataUpdateCoordinator[OptieFamilyData]):
             except (TypeError, ValueError):
                 creche_id = None
             if creche_id is not None:
-                if new_data.get(CONF_CRECHE_ID) != creche_id:
+                configured = new_data.get(CONF_CRECHE_ID)
+                if configured is None:
                     new_data[CONF_CRECHE_ID] = creche_id
                     changed = True
-                if self.client.creche_id != creche_id:
-                    self.client.set_creche_id(creche_id)
+                    if self.client.creche_id != creche_id:
+                        self.client.set_creche_id(creche_id)
+                else:
+                    try:
+                        configured_id = int(configured)
+                    except (TypeError, ValueError):
+                        configured_id = None
+                    if configured_id is not None and configured_id != creche_id:
+                        _LOGGER.warning(
+                            "creche_id /me (%s) diverge de la config entry (%s) — config conservée",
+                            creche_id,
+                            configured_id,
+                        )
+                    # Toujours aligner le client sur la config entry (pas /me)
+                    if self.client.creche_id != configured_id and configured_id is not None:
+                        self.client.set_creche_id(configured_id)
                 creche_name = str(creche.get("nom") or "")
                 if creche_name and new_data.get(CONF_CRECHE_NAME) != creche_name:
                     new_data[CONF_CRECHE_NAME] = creche_name
@@ -213,15 +239,16 @@ class OptieFamilyCoordinator(DataUpdateCoordinator[OptieFamilyData]):
             changed = True
             reload_required = self._enfants_changed(enfants, previous_enfants)
 
-        if not changed:
-            return
+        # Nouveaux enfants découverts → activés par défaut dans les options
+        options_changed = self._sync_enabled_enfants_options(enfants)
 
-        self.hass.config_entries.async_update_entry(self.entry, data=new_data)
-        _LOGGER.debug(
-            "Métadonnées OptiFamily synchronisées (creche_id=%s, %d enfant(s))",
-            new_data.get(CONF_CRECHE_ID),
-            len(enfants),
-        )
+        if changed:
+            self.hass.config_entries.async_update_entry(self.entry, data=new_data)
+            _LOGGER.debug(
+                "Métadonnées OptiFamily synchronisées (creche_id=%s, %d enfant(s))",
+                new_data.get(CONF_CRECHE_ID),
+                len(enfants),
+            )
 
         if reload_required:
             new_ids = {e["id"] for e in enfants}
@@ -231,6 +258,70 @@ class OptieFamilyCoordinator(DataUpdateCoordinator[OptieFamilyData]):
                     "Nouveau(x) enfant(s) détecté(s) : %s",
                     ", ".join(str(i) for i in sorted(added_ids)),
                 )
+
+        if options_changed or reload_required:
+            self._purge_disabled_enfants(enfants)
+
+    def _sync_enabled_enfants_options(self, enfants: list[dict[str, Any]]) -> bool:
+        """Ajoute les nouveaux IDs à enabled_enfants ; crée la liste si absente."""
+        all_ids = [int(e["id"]) for e in enfants if e.get("id") is not None]
+        options = dict(self.entry.options)
+        current = options.get(CONF_ENABLED_ENFANTS)
+        if current is None:
+            # Défaut implicite = tous ; on ne force pas d'écriture tant que l'utilisateur
+            # n'a pas ouvert les options — sauf nouveaux enfants après une liste explicite.
+            return False
+        try:
+            enabled = {int(x) for x in current}
+        except (TypeError, ValueError):
+            enabled = set()
+        known = set(all_ids)
+        # Conserver les exclus volontairement ; activer seulement les tout nouveaux
+        previous_known = {
+            int(e["id"])
+            for e in (self.entry.data.get(CONF_ENFANTS) or [])
+            if e.get("id") is not None
+        }
+        newcomers = known - previous_known
+        updated = (enabled & known) | newcomers
+        if updated == enabled and all(x in known for x in enabled):
+            return False
+        options[CONF_ENABLED_ENFANTS] = sorted(updated)
+        self.hass.config_entries.async_update_entry(self.entry, options=options)
+        return True
+
+    def _purge_disabled_enfants(self, enfants: list[dict[str, Any]]) -> None:
+        """Retire devices/entités des enfants exclus des options."""
+        enabled_opt = self.entry.options.get(CONF_ENABLED_ENFANTS)
+        if enabled_opt is None:
+            return
+        all_enfants = iter_enfants(enfants, self.entry.data.get(CONF_ENFANTS))
+        followed = {
+            e.id
+            for e in iter_enfants_enabled(
+                enfants, self.entry.data.get(CONF_ENFANTS), enabled_ids=enabled_opt
+            )
+        }
+        excluded = {e.id for e in all_enfants} - followed
+        if not excluded:
+            return
+        removed = async_purge_enfant_devices(self.hass, self.entry, excluded)
+        self.known_enfant_ids -= excluded
+        self.known_calendar_enfant_ids -= excluded
+        if removed:
+            _LOGGER.info(
+                "Purge OptiFamily : %s device(s)/entité(s) pour enfant(s) exclus %s",
+                removed,
+                sorted(excluded),
+            )
+
+    async def async_set_documents_scope(self, scope: str, enfant_id: int | None = None) -> None:
+        """Change le scope documents affiché (dashboard select)."""
+        if scope not in DOCUMENTS_SCOPES:
+            raise ValueError(f"Scope documents invalide : {scope}")
+        self.documents_scope = scope
+        self.documents_enfant_id = int(enfant_id) if enfant_id is not None else None
+        self.async_update_listeners()
 
     # ------------------------------------------------------------------
     # Mise à jour
@@ -252,8 +343,17 @@ class OptieFamilyCoordinator(DataUpdateCoordinator[OptieFamilyData]):
             result.me = await self.client.get_me()
             result.enfants = await self.client.get_enfants()
 
+            followed = iter_enfants_enabled(
+                result.enfants,
+                result.persisted_enfants,
+                enabled_ids=self.entry.options.get(CONF_ENABLED_ENFANTS),
+            )
+            followed_ids = {e.id for e in followed}
+
             for enfant in result.enfants:
                 eid = enfant["id"]
+                if eid not in followed_ids:
+                    continue
                 try:
                     result.plannings[eid] = await self.client.get_planning_current_month(eid)
                 except Exception as err:
@@ -292,6 +392,8 @@ class OptieFamilyCoordinator(DataUpdateCoordinator[OptieFamilyData]):
                     _LOGGER.warning("Impossible de récupérer les documents famille : %s", err)
             for enfant in result.enfants:
                 eid = enfant["id"]
+                if eid not in followed_ids:
+                    continue
                 try:
                     result.documents_enfant[eid] = await self.client.get_documents_enfant(eid)
                 except Exception as err:
@@ -370,14 +472,13 @@ class OptieFamilyCoordinator(DataUpdateCoordinator[OptieFamilyData]):
         """Charge le journal des transmissions pour une date (navigation dashboard)."""
         self.transmissions_view_date = day
         journal: dict[int, list[dict[str, Any]]] = {}
-        enfants = list((self.data.enfants if self.data else None) or [])
-        if not enfants:
-            enfants = list(self.entry.data.get(CONF_ENFANTS, []))
-        for raw in enfants:
-            try:
-                eid = int(raw["id"])
-            except (TypeError, ValueError, KeyError):
-                continue
+        followed = iter_enfants_enabled(
+            list((self.data.enfants if self.data else None) or []),
+            list(self.entry.data.get(CONF_ENFANTS, [])),
+            enabled_ids=self.entry.options.get(CONF_ENABLED_ENFANTS),
+        )
+        for enfant in followed:
+            eid = enfant.id
             try:
                 journal[eid] = await self.client.get_transmissions(eid, day)
             except Exception as err:

@@ -1,4 +1,4 @@
-# Services OptiFamily — navigation du journal des transmissions
+# Services OptiFamily
 
 set_transmissions_date:
   name: Définir la date des transmissions
@@ -30,6 +30,70 @@ shift_transmissions_date:
         number:
           min: -30
           max: 30
+          mode: box
+    config_entry_id:
+      name: Entrée OptiFamily (optionnel)
+      required: false
+      selector:
+        text:
+
+set_documents_scope:
+  name: Scope des documents
+  description: Affiche les documents crèche, famille ou enfant sur le capteur Documents.
+  fields:
+    scope:
+      name: Scope
+      required: true
+      selector:
+        select:
+          options:
+            - creche
+            - famille
+            - enfant
+    enfant_id:
+      name: Identifiant enfant
+      description: Requis si scope = enfant
+      required: false
+      selector:
+        number:
+          mode: box
+    config_entry_id:
+      name: Entrée OptiFamily (optionnel)
+      required: false
+      selector:
+        text:
+
+download:
+  name: Télécharger un média
+  description: >
+    Télécharge une photo, un document ou une facture vers config/www/optifamily/
+    (URL /local/optifamily/…). Événement optifamily_download_ready en cas de succès.
+  fields:
+    kind:
+      name: Type
+      required: true
+      selector:
+        select:
+          options:
+            - photo
+            - document
+            - facture
+    id:
+      name: Identifiant
+      required: true
+      selector:
+        text:
+    download_url:
+      name: URL (optionnel)
+      description: Si fournie, utilisée directement
+      required: false
+      selector:
+        text:
+    enfant_id:
+      name: Identifiant enfant
+      required: false
+      selector:
+        number:
           mode: box
     config_entry_id:
       name: Entrée OptiFamily (optionnel)

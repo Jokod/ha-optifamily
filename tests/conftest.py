@@ -37,7 +37,10 @@ def _ensure_ha_stubs() -> None:
         "homeassistant.helpers.config_validation",
         "homeassistant.components",
         "homeassistant.components.sensor",
+        "homeassistant.components.binary_sensor",
         "homeassistant.components.calendar",
+        "homeassistant.helpers.event",
+        "homeassistant.helpers.entity_registry",
     ]
     for name in modules:
         sys.modules.setdefault(name, ModuleType(name))
@@ -122,7 +125,8 @@ def _ensure_ha_stubs() -> None:
 
     class _OptionsFlow:
         def __init__(self) -> None:
-            self.config_entry = MagicMock(options={})
+            self.config_entry = MagicMock(options={}, data={})
+            self.hass = MagicMock()
 
         def async_show_form(self, **kwargs: Any) -> dict[str, Any]:
             return {"type": "form", **kwargs}
@@ -174,6 +178,37 @@ def _ensure_ha_stubs() -> None:
     cal_mod.CalendarEntity = _CalendarEntity
     cal_mod.CalendarEvent = _CalendarEvent
 
+    class _BinarySensorEntity:
+        _attr_has_entity_name = False
+
+    class _BinarySensorDeviceClass:
+        PROBLEM = "problem"
+
+    bin_mod = sys.modules["homeassistant.components.binary_sensor"]
+    bin_mod.BinarySensorEntity = _BinarySensorEntity
+    bin_mod.BinarySensorDeviceClass = _BinarySensorDeviceClass
+
+    event_mod = sys.modules["homeassistant.helpers.event"]
+
+    def _track_time_interval(hass: Any, action: Any, interval: Any) -> Any:
+        return lambda: None
+
+    event_mod.async_track_time_interval = _track_time_interval
+
+    er_mod = sys.modules["homeassistant.helpers.entity_registry"]
+
+    class _EntityRegistry:
+        def __init__(self) -> None:
+            self.entities: dict[str, Any] = {}
+
+        def async_remove(self, entity_id: str) -> None:
+            self.entities.pop(entity_id, None)
+
+    def _er_get(_hass: Any) -> _EntityRegistry:
+        return _EntityRegistry()
+
+    er_mod.async_get = _er_get
+
     # const
     const_mod = sys.modules["homeassistant.const"]
     const_mod.EntityCategory = _EntityCategory
@@ -197,6 +232,7 @@ def _ensure_ha_stubs() -> None:
     ce.ConfigEntry = MagicMock
     ce.ConfigFlowResult = dict
     ce.SOURCE_IMPORT = "import"
+    ce.SOURCE_REAUTH = "reauth"
 
     exc = sys.modules["homeassistant.exceptions"]
     exc.ConfigEntryAuthFailed = _ConfigEntryAuthFailed
@@ -255,6 +291,12 @@ def _ensure_ha_stubs() -> None:
     class _DeviceRegistry:
         def async_get_or_create(self, **kwargs: Any) -> _DeviceEntry:
             return _DeviceEntry()
+
+        def async_get_device(self, **kwargs: Any) -> _DeviceEntry | None:
+            return None
+
+        def async_remove_device(self, device_id: str) -> None:
+            return None
 
     def _async_get_registry(_hass: Any) -> _DeviceRegistry:
         return _DeviceRegistry()

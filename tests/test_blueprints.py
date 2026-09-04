@@ -92,6 +92,14 @@ def test_shipped_allowlist_matches_files_on_disk() -> None:
         assert on_disk == set(names)
 
 
+def test_blueprints_use_phase_attrs_not_regex() -> None:
+    """Plan 1.1.0 : plus de parse horaires Jinja dans les blueprints."""
+    for path in (bp._SOURCE).rglob("*.yaml"):
+        text = path.read_text(encoding="utf-8")
+        assert "regex_findall" not in text, path.name
+        assert "sensor.optifamily_phase_journee" not in text, path.name
+
+
 def test_install_skips_yaml_not_in_allowlist(
     hass: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

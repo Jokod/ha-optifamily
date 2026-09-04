@@ -15,6 +15,13 @@
         "data": {
           "creche_id": "Crèche"
         }
+      },
+      "reauth_confirm": {
+        "title": "Reconnexion OptiFamily",
+        "description": "Les identifiants pour {username} ne sont plus valides. Saisissez le mot de passe.",
+        "data": {
+          "password": "Mot de passe"
+        }
       }
     },
     "error": {
@@ -24,20 +31,22 @@
       "unknown": "Erreur inattendue. Consultez les logs Home Assistant."
     },
     "abort": {
-      "already_configured": "Ce compte OptiFamily est déjà configuré."
+      "already_configured": "Ce compte OptiFamily est déjà configuré.",
+      "reauth_successful": "Authentification mise à jour."
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Options OptiFamily",
-        "description": "Intervalle de polling API (défaut 30 min, mini {min_minutes} min, maxi {max_minutes} min). La pause nocturne évite les appels API la nuit (défaut 21:00 → 06:00). La pause crèche fermée saute le polling les jours sans créneau (week-end, fermeture).",
+        "description": "Intervalle de polling API (défaut 30 min, mini {min_minutes} min, maxi {max_minutes} min). La pause nocturne évite les appels API la nuit (défaut 21:00 → 06:00). La pause crèche fermée saute le polling les jours sans créneau (week-end, fermeture). Les enfants non suivis sont retirés du dashboard (devices/entités purgés).",
         "data": {
           "scan_interval_minutes": "Intervalle de mise à jour",
           "pause_updates": "Pause nocturne des mises à jour",
           "pause_updates_start": "Début de la pause",
           "pause_updates_end": "Fin de la pause",
-          "pause_when_closed": "Pause si crèche fermée / aucun créneau"
+          "pause_when_closed": "Pause si crèche fermée / aucun créneau",
+          "enabled_enfants": "Enfants suivis"
         }
       }
     }

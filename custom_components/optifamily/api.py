@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import date, datetime
 import json as json_lib
 import logging
@@ -156,6 +157,11 @@ class OptieFamilyApiClient:
         self._session = session
         self._access_token: str | None = None
         self._refresh_token: str | None = None
+        self._token_listener: Callable[[], None] | None = None
+
+    def set_token_listener(self, listener: Callable[[], None] | None) -> None:
+        """Callback synchrone après login/refresh réussi (persistance tokens)."""
+        self._token_listener = listener
 
     @property
     def creche_id(self) -> int | None:
@@ -253,6 +259,8 @@ class OptieFamilyApiClient:
         self._access_token = data["accessToken"]
         if data.get("refreshToken"):
             self._refresh_token = data["refreshToken"]
+        if self._token_listener is not None:
+            self._token_listener()
 
     def set_tokens(self, access_token: str, refresh_token: str | None) -> None:
         """Restaure les tokens depuis le stockage persistant."""
@@ -347,6 +355,54 @@ class OptieFamilyApiClient:
     async def get_facturation(self) -> list[dict[str, Any]]:
         """Retourne les informations de facturation."""
         return _as_list(await self._request("GET", API_FACTURATION))
+
+    async def download_bytes(self, path_or_url: str) -> bytes:
+        """Télécharge un binaire authentifié (URL absolue ou chemin API)."""
+        url = path_or_url
+        if path_or_url.startswith("/"):
+            url = f"{API_BASE_URL}{path_or_url}"
+        elif not path_or_url.startswith("http"):
+            url = f"{API_BASE_URL}/{path_or_url.lstrip('/')}"
+
+        if not self._access_token:
+            await self.ensure_authenticated()
+        headers = {
+            "Authorization": f"Bearer {self._access_token}",
+            "Accept": "*/*",
+        }
+        try:
+            async with self._session.request(
+                "GET",
+                url,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=HTTP_TIMEOUT * 2),
+            ) as resp:
+                if resp.status == 401:
+                    self._access_token = None
+                    await self.ensure_authenticated()
+                    headers["Authorization"] = f"Bearer {self._access_token}"
+                    async with self._session.request(
+                        "GET",
+                        url,
+                        headers=headers,
+                        timeout=aiohttp.ClientTimeout(total=HTTP_TIMEOUT * 2),
+                    ) as retry:
+                        if retry.status >= 400:
+                            text = await retry.text()
+                            raise OptieFamilyApiError(
+                                retry.status, _error_detail(retry.status, text)
+                            )
+                        return await retry.read()
+                if resp.status >= 400:
+                    text = await resp.text()
+                    raise OptieFamilyApiError(resp.status, _error_detail(resp.status, text))
+                return await resp.read()
+        except OptieFamilyError:
+            raise
+        except TimeoutError as err:
+            raise OptieFamilyConnectionError(f"Timeout téléchargement OptiFamily : {err}") from err
+        except aiohttp.ClientError as err:
+            raise OptieFamilyConnectionError(f"Erreur réseau téléchargement : {err}") from err
 
     # ------------------------------------------------------------------
     # Couche transport

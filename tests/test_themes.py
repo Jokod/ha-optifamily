@@ -14,7 +14,10 @@ def test_install_theme_sync_copies_yaml(hass: MagicMock, tmp_path: Path) -> None
     assert th.install_theme_sync(hass) is True
     dest = tmp_path / "themes" / "optifamily.yaml"
     assert dest.is_file()
-    assert "ha-view-sections-column-max-width" in dest.read_text()
+    text = dest.read_text()
+    assert "ha-view-sections-column-max-width" in text
+    assert "optifamily-accent" in text
+    assert "optifamily-radius" in text
 
 
 def test_install_theme_missing_source(hass: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:

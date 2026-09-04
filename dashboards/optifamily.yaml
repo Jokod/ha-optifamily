@@ -1,0 +1,593 @@
+# Tableau de bord OptiFamily — français (panel)
+#
+# HACS Frontend (requis) : Mushroom, card-mod, auto-entities, mod-card
+# Thème : installé auto dans config/themes/ (recharger les thèmes)
+#
+# Découverte : première config_entry_id via optifamily_kind: phase_journee
+#   (UX mono-crèche). Multi-crèches = un dashboard (copie) par crèche.
+#
+# Actions : navigate / call-service / more-info / toggle — libellés honnêtes.
+# Import : Paramètres → Tableaux de bord → Ajouter → Importer YAML
+
+title: OptiFamily
+views:
+  - title: Accueil
+    path: accueil
+    icon: mdi:hand-wave
+    type: panel
+    cards:
+      - type: custom:mod-card
+        card_mod:
+          style: &panel_mod |
+            ha-card {
+              background: transparent !important;
+              border: none !important;
+              box-shadow: none !important;
+              width: 100%;
+              max-width: 1100px;
+              margin: 0 auto;
+              padding: 8px 16px 28px;
+            }
+        card:
+          type: vertical-stack
+          cards:
+            - type: custom:mushroom-template-card
+              layout: horizontal
+              multiline_secondary: true
+              tap_action: {action: none}
+              card_mod:
+                style: |
+                  ha-card {
+                    border-radius: var(--optifamily-radius, 12px);
+                    border: none; box-shadow: none;
+                    background: linear-gradient(125deg, var(--optifamily-accent-soft, #EBF4FF), var(--optifamily-surface, #F7FAFC));
+                  }
+              icon: >
+                {% set s = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind')
+                  | selectattr('attributes.optifamily_kind', 'eq', 'phase_journee') | list %}
+                {% set p = s[0].state if s else 'inconnu' %}
+                {% if p == 'deposer' %}mdi:car-child-seat
+                {% elif p == 'creche' %}mdi:baby-face-outline
+                {% elif p == 'chercher' %}mdi:clock-end
+                {% elif p == 'rentre' %}mdi:home-import-outline
+                {% elif p == 'maison' %}mdi:home-heart
+                {% elif p == 'ferme' %}mdi:calendar-remove
+                {% else %}mdi:timeline-clock-outline{% endif %}
+              icon_color: >
+                {% set s = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind')
+                  | selectattr('attributes.optifamily_kind', 'eq', 'phase_journee') | list %}
+                {% set p = s[0].state if s else 'inconnu' %}
+                {% if p in ['deposer', 'chercher'] %}orange
+                {% elif p == 'creche' %}teal
+                {% elif p == 'ferme' %}red
+                {% else %}blue-grey{% endif %}
+              primary: >
+                {% set s = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind')
+                  | selectattr('attributes.optifamily_kind', 'eq', 'phase_journee') | list %}
+                {{ (s[0].attributes.libelle if s else none) or 'OptiFamily' }}
+              secondary: >
+                {% set phase = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind')
+                  | selectattr('attributes.optifamily_kind', 'eq', 'phase_journee') | list %}
+                {% set resume = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind')
+                  | selectattr('attributes.optifamily_kind', 'eq', 'resume') | list %}
+                {% set attn = states.binary_sensor | selectattr('attributes', 'contains', 'optifamily_kind')
+                  | selectattr('attributes.optifamily_kind', 'eq', 'attention') | list %}
+                {{ (phase[0].attributes.message if phase else none)
+                   or (resume[0].state if resume else none)
+                   or 'Intégration introuvable.' }}
+                {%- if attn and attn[0].state == 'on' %} · {{ attn[0].attributes.raison or 'Attention' }}{% endif %}
+
+            - type: custom:mushroom-chips-card
+              alignment: center
+              card_mod: {style: "ha-card { border: none; box-shadow: none; background: transparent; }"}
+              chips:
+                - type: template
+                  icon: >
+                    {% set a = states.binary_sensor | selectattr('attributes', 'contains', 'optifamily_kind')
+                      | selectattr('attributes.optifamily_kind', 'eq', 'attention') | list %}
+                    {{ 'mdi:bell-badge' if a and a[0].state == 'on' else 'mdi:check-circle-outline' }}
+                  icon_color: >
+                    {% set a = states.binary_sensor | selectattr('attributes', 'contains', 'optifamily_kind')
+                      | selectattr('attributes.optifamily_kind', 'eq', 'attention') | list %}
+                    {{ 'red' if a and a[0].state == 'on' else 'teal' }}
+                  content: >
+                    {% set a = states.binary_sensor | selectattr('attributes', 'contains', 'optifamily_kind')
+                      | selectattr('attributes.optifamily_kind', 'eq', 'attention') | list %}
+                    {% if a and a[0].state == 'on' %}{{ a[0].attributes.raison or 'Attention' }}
+                    {% else %}Tout va bien{% endif %}
+                  tap_action: {action: more-info}
+                - type: template
+                  icon: mdi:text-box-outline
+                  icon_color: cyan
+                  content: Envoyer le résumé
+                  tap_action: {action: call-service, service: script.optifamily_notify_resume}
+                - type: template
+                  icon: mdi:clock-check-outline
+                  icon_color: blue-grey
+                  content: >
+                    {% set sync = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind')
+                      | selectattr('attributes.optifamily_kind', 'eq', 'dernier_rafraichissement') | list %}
+                    {% if sync and sync[0].state not in ['unknown', 'unavailable', none] %}
+                      {% set sec = (as_timestamp(now()) - as_timestamp(as_datetime(sync[0].state))) | int %}
+                      {% if sec < 60 %}À l'instant
+                      {% elif sec < 3600 %}Il y a {{ (sec / 60) | int }} min
+                      {% elif sec < 86400 %}Il y a {{ (sec / 3600) | int }} h
+                      {% else %}Il y a {{ (sec / 86400) | int }} j{% endif %}
+                    {% else %}Synchro inconnue{% endif %}
+
+            - type: conditional
+              conditions:
+                - condition: state
+                  entity: input_boolean.optifamily_quiet_hours
+                  state_not: [unavailable, unknown]
+              card:
+                type: custom:mushroom-chips-card
+                alignment: center
+                card_mod: {style: "ha-card { border: none; box-shadow: none; background: transparent; }"}
+                chips:
+                  - type: template
+                    entity: input_boolean.optifamily_quiet_hours
+                    icon: "{{ 'mdi:bell-off' if is_state('input_boolean.optifamily_quiet_hours', 'on') else 'mdi:bell-outline' }}"
+                    icon_color: "{{ 'deep-orange' if is_state('input_boolean.optifamily_quiet_hours', 'on') else 'teal' }}"
+                    content: "{{ 'Silencieux' if is_state('input_boolean.optifamily_quiet_hours', 'on') else 'Notifications' }}"
+                    tap_action: {action: toggle}
+
+            - type: heading
+              heading: Enfants du jour
+              heading_style: title
+              icon: mdi:account-child
+            - type: custom:auto-entities
+              show_empty: false
+              card: {type: vertical-stack}
+              card_param: cards
+              filter:
+                template: >
+                  {% set phase = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind')
+                    | selectattr('attributes.optifamily_kind', 'eq', 'phase_journee') | list %}
+                  {% set entry = phase[0].attributes.config_entry_id if phase else none %}
+                  {% set ns = namespace(out=[]) %}
+                  {% for s in states.sensor | selectattr('attributes', 'contains', 'optifamily_kind')
+                    | selectattr('attributes.optifamily_kind', 'eq', 'present') | list
+                    if (entry is none or s.attributes.config_entry_id == entry)
+                    and states(s.entity_id) not in ['unavailable', 'unknown'] %}
+                    {% set ph = s.attributes.phase_enfant or s.state %}
+                    {% set ferme = s.attributes.statut_jour == 'ferme' or s.attributes.jour_fermeture %}
+                    {% set ns.out = ns.out + [{
+                      'type': 'custom:mushroom-template-card',
+                      'entity': s.entity_id,
+                      'layout': 'horizontal',
+                      'multiline_secondary': true,
+                      'icon': 'mdi:calendar-remove' if ferme else 'mdi:car-child-seat' if ph == 'deposer'
+                        else 'mdi:clock-end' if ph == 'chercher'
+                        else 'mdi:home-heart' if ph in ['rentre', 'maison'] or s.state == 'absent'
+                        else 'mdi:baby-face-outline',
+                      'icon_color': 'red' if ferme else 'amber' if ph == 'deposer'
+                        else 'orange' if ph == 'chercher'
+                        else 'blue-grey' if ph in ['rentre', 'maison'] or s.state == 'absent' else 'teal',
+                      'primary': s.attributes.enfant_libelle or 'Enfant',
+                      'secondary': s.attributes.message or s.state,
+                      'tap_action': {'action': 'navigate', 'navigation_path': 'enfants'},
+                      'card_mod': {'style': 'ha-card { border-radius: var(--optifamily-radius, 12px); border: none; box-shadow: none; }'}
+                    }] %}
+                  {% endfor %}
+                  {{ ns.out }}
+
+            - type: custom:mushroom-chips-card
+              alignment: center
+              card_mod: {style: "ha-card { border: none; box-shadow: none; background: transparent; margin-top: 8px; }"}
+              chips:
+                - type: template
+                  icon: mdi:account-child-circle
+                  content: Enfants
+                  tap_action: {action: navigate, navigation_path: enfants}
+                - type: template
+                  icon: mdi:clipboard-text-clock-outline
+                  content: Journal
+                  tap_action: {action: navigate, navigation_path: transmissions}
+                - type: template
+                  icon: mdi:image-multiple-outline
+                  content: Photos
+                  tap_action: {action: navigate, navigation_path: medias}
+                - type: template
+                  icon: mdi:file-document-outline
+                  content: Documents
+                  tap_action: {action: navigate, navigation_path: medias}
+                - type: template
+                  icon: mdi:newspaper-variant-outline
+                  content: Infos
+                  tap_action: {action: navigate, navigation_path: infos}
+
+  - title: Enfants
+    path: enfants
+    icon: mdi:account-child-circle
+    type: panel
+    cards:
+      - type: custom:mod-card
+        card_mod: {style: *panel_mod}
+        card:
+          type: vertical-stack
+          cards:
+            - type: heading
+              heading: Fiches
+              heading_style: title
+              icon: mdi:card-account-details-outline
+            - type: custom:auto-entities
+              show_empty: false
+              card: {type: grid, columns: 2, square: false}
+              card_param: cards
+              filter:
+                template: >
+                  {% set phase = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind')
+                    | selectattr('attributes.optifamily_kind', 'eq', 'phase_journee') | list %}
+                  {% set entry = phase[0].attributes.config_entry_id if phase else none %}
+                  {% set ns = namespace(out=[]) %}
+                  {% for s in states.sensor | selectattr('attributes', 'contains', 'optifamily_kind')
+                    | selectattr('attributes.optifamily_kind', 'eq', 'present') | list
+                    if (entry is none or s.attributes.config_entry_id == entry)
+                    and states(s.entity_id) not in ['unavailable', 'unknown'] %}
+                    {% set id = s.attributes.enfant_id %}
+                    {% set tr = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'transmissions')
+                      | selectattr('attributes.enfant_id', 'eq', id) | list %}
+                    {% set al = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'albums')
+                      | selectattr('attributes.enfant_id', 'eq', id) | list %}
+                    {% set plages = (s.attributes.plages or []) | map(attribute='label') | list | join(' · ') %}
+                    {% set ns.out = ns.out + [{
+                      'type': 'custom:mushroom-template-card',
+                      'entity': s.entity_id,
+                      'layout': 'vertical',
+                      'multiline_secondary': true,
+                      'icon': 'mdi:baby-face-outline',
+                      'icon_color': 'teal',
+                      'primary': s.attributes.enfant_libelle or 'Enfant',
+                      'secondary': (s.attributes.message or s.state)
+                        ~ ('\n' ~ plages if plages else '')
+                        ~ '\n' ~ ((tr[0].state | int(0)) if tr else 0) ~ ' transm. · '
+                        ~ ((al[0].state | int(0)) if al else 0) ~ ' album(s)',
+                      'tap_action': {'action': 'more-info'},
+                      'card_mod': {'style': 'ha-card { border-radius: var(--optifamily-radius, 12px); border: none; box-shadow: none; background: var(--optifamily-surface, #F7FAFC); }'}
+                    }] %}
+                  {% endfor %}
+                  {{ ns.out }}
+
+  - title: Transmissions
+    path: transmissions
+    icon: mdi:clipboard-text-clock-outline
+    type: panel
+    cards:
+      - type: custom:mod-card
+        card_mod: {style: *panel_mod}
+        card:
+          type: vertical-stack
+          cards:
+            - type: heading
+              heading: Journal
+              heading_style: title
+              icon: mdi:book-open-page-variant-outline
+            - type: custom:mushroom-chips-card
+              alignment: center
+              card_mod: {style: "ha-card { border: none; box-shadow: none; background: transparent; }"}
+              chips:
+                - type: template
+                  icon: mdi:chevron-left
+                  content: Jour précédent
+                  tap_action: {action: call-service, service: optifamily.shift_transmissions_date, data: {days: -1}}
+                - type: template
+                  icon: mdi:calendar-today
+                  icon_color: teal
+                  content: >
+                    {% set j = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind')
+                      | selectattr('attributes.optifamily_kind', 'eq', 'transmissions_journal') | list %}
+                    {{ (j[0].attributes.date if j else none) or now().date().isoformat() }}
+                  tap_action: {action: call-service, service: optifamily.set_transmissions_date, data: {date: "{{ now().date().isoformat() }}"}}
+                - type: template
+                  icon: mdi:chevron-right
+                  content: Jour suivant
+                  tap_action: {action: call-service, service: optifamily.shift_transmissions_date, data: {days: 1}}
+            - type: custom:auto-entities
+              show_empty: true
+              card: {type: vertical-stack}
+              card_param: cards
+              filter:
+                template: >
+                  {% set phase = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind')
+                    | selectattr('attributes.optifamily_kind', 'eq', 'phase_journee') | list %}
+                  {% set entry = phase[0].attributes.config_entry_id if phase else none %}
+                  {% set ns = namespace(out=[]) %}
+                  {% for s in states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'transmissions_journal') | list
+                    if (entry is none or s.attributes.config_entry_id == entry)
+                    and states(s.entity_id) not in ['unavailable', 'unknown'] %}
+                    {% set n = states(s.entity_id) | int(0) %}
+                    {% set raw = state_attr(s.entity_id, 'items') or [] %}
+                    {% set ns.out = ns.out + [{
+                      'type': 'custom:mushroom-template-card',
+                      'entity': s.entity_id,
+                      'icon': 'mdi:clipboard-text-clock-outline',
+                      'icon_color': 'teal',
+                      'primary': (s.attributes.enfant_libelle or 'Enfant') ~ ' · ' ~ n,
+                      'secondary': s.attributes.date or '',
+                      'tap_action': {'action': 'more-info'},
+                      'card_mod': {'style': 'ha-card { border-radius: var(--optifamily-radius, 12px); border: none; box-shadow: none; }'}
+                    }] %}
+                    {% for item in raw[:20] %}
+                      {% set ns.out = ns.out + [{
+                        'type': 'custom:mushroom-template-card',
+                        'entity': s.entity_id,
+                        'icon': item.icon if item.icon else 'mdi:clipboard-text-outline',
+                        'icon_color': item.color if item.color else 'teal',
+                        'primary': (item.titre if item.titre else 'Transmission') ~ (' ★' if item.marquant else ''),
+                        'secondary': item.bloc if item.bloc else (item.ligne if item.ligne else ''),
+                        'multiline_secondary': true,
+                        'layout': 'horizontal',
+                        'tap_action': {'action': 'more-info'},
+                        'card_mod': {'style': 'ha-card { border-radius: var(--optifamily-radius, 12px); border: none; box-shadow: none; border-left: 3px solid var(--optifamily-accent, #2B6CB0); }'}
+                      }] %}
+                    {% endfor %}
+                  {% endfor %}
+                  {{ ns.out }}
+
+  - title: Médias
+    path: medias
+    icon: mdi:folder-multiple-image
+    type: panel
+    cards:
+      - type: custom:mod-card
+        card_mod: {style: *panel_mod}
+        card:
+          type: vertical-stack
+          cards:
+            - type: heading
+              heading: Albums / photos
+              heading_style: title
+              icon: mdi:image-album
+            - type: custom:auto-entities
+              show_empty: true
+              card: {type: vertical-stack}
+              card_param: cards
+              filter:
+                template: >
+                  {% set phase = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind')
+                    | selectattr('attributes.optifamily_kind', 'eq', 'phase_journee') | list %}
+                  {% set entry = phase[0].attributes.config_entry_id if phase else none %}
+                  {% set ns = namespace(out=[]) %}
+                  {% for s in states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'albums') | list
+                    if entry is none or s.attributes.config_entry_id == entry %}
+                    {% set ns.out = ns.out + [{
+                      'type': 'custom:mushroom-template-card',
+                      'entity': s.entity_id,
+                      'icon': 'mdi:image-multiple-outline',
+                      'icon_color': 'purple',
+                      'primary': (s.attributes.enfant_libelle or 'Enfant') ~ ' · ' ~ (states(s.entity_id) | int(0)) ~ ' album(s)',
+                      'secondary': 'Détail capteur',
+                      'tap_action': {'action': 'more-info'},
+                    }] %}
+                    {% for album in (s.attributes.items or [])[:6] %}
+                      {% set photos = album.photos or album.items or [] %}
+                      {% set ns.out = ns.out + [{
+                        'type': 'custom:mushroom-template-card',
+                        'entity': s.entity_id,
+                        'icon': 'mdi:folder-image',
+                        'icon_color': 'deep-purple',
+                        'primary': album.titre or album.label or album.nom or 'Album',
+                        'secondary': (photos | length) ~ ' photo(s)',
+                        'tap_action': {'action': 'more-info'},
+                      }] %}
+                      {% for photo in photos[:10] %}
+                        {% set can = photo.downloadable if photo.downloadable is defined else true %}
+                        {% set pid = photo.id if photo.id is defined else none %}
+                        {% set ns.out = ns.out + [{
+                          'type': 'custom:mushroom-template-card',
+                          'entity': s.entity_id,
+                          'layout': 'horizontal',
+                          'icon': 'mdi:image-outline' if can else 'mdi:image-off-outline',
+                          'icon_color': 'teal' if can else 'grey',
+                          'primary': photo.titre or photo.label or ('Photo ' ~ (pid or '')),
+                          'secondary': 'Appeler téléchargement' if can and pid else 'Non téléchargeable',
+                          'tap_action': (
+                            {'action': 'call-service', 'service': 'optifamily.download',
+                             'data': {'kind': 'photo', 'id': pid, 'enfant_id': s.attributes.enfant_id,
+                                      'config_entry_id': s.attributes.config_entry_id}}
+                            if can and pid else {'action': 'more-info'}
+                          ),
+                        }] %}
+                      {% endfor %}
+                    {% endfor %}
+                  {% endfor %}
+                  {{ ns.out if ns.out else [{'type': 'custom:mushroom-template-card', 'icon': 'mdi:image-off-outline', 'primary': 'Aucun album', 'tap_action': {'action': 'none'}}] }}
+
+            - type: heading
+              heading: Documents
+              heading_style: title
+              icon: mdi:folder-open-outline
+            - type: custom:mushroom-chips-card
+              alignment: center
+              card_mod: {style: "ha-card { border: none; box-shadow: none; background: transparent; }"}
+              chips:
+                - type: template
+                  icon: mdi:town-hall
+                  content: Portée crèche
+                  tap_action: {action: call-service, service: optifamily.set_documents_scope, data: {scope: creche}}
+                - type: template
+                  icon: mdi:account-group-outline
+                  content: Portée famille
+                  tap_action: {action: call-service, service: optifamily.set_documents_scope, data: {scope: famille}}
+                - type: template
+                  icon: mdi:baby-face-outline
+                  content: Portée enfant
+                  tap_action: {action: call-service, service: optifamily.set_documents_scope, data: {scope: enfant}}
+            - type: custom:auto-entities
+              show_empty: true
+              card: {type: vertical-stack}
+              card_param: cards
+              filter:
+                template: >
+                  {% set phase = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind')
+                    | selectattr('attributes.optifamily_kind', 'eq', 'phase_journee') | list %}
+                  {% set entry = phase[0].attributes.config_entry_id if phase else none %}
+                  {% set docs = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind')
+                    | selectattr('attributes.optifamily_kind', 'eq', 'documents') | list %}
+                  {% if not docs %}
+                    {% set docs = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind')
+                      | selectattr('attributes.optifamily_kind', 'eq', 'documents_total') | list %}
+                  {% endif %}
+                  {% set ns = namespace(out=[]) %}
+                  {% for s in docs if entry is none or s.attributes.config_entry_id == entry %}
+                    {% set ns.out = ns.out + [{
+                      'type': 'custom:mushroom-template-card',
+                      'entity': s.entity_id,
+                      'icon': 'mdi:file-document-outline',
+                      'icon_color': 'cyan',
+                      'primary': 'Documents · ' ~ (states(s.entity_id) | int(0)),
+                      'secondary': 'Portée : ' ~ (s.attributes.scope or '—'),
+                      'tap_action': {'action': 'more-info'},
+                    }] %}
+                    {% for item in (s.attributes.items or [])[:20] %}
+                      {% set can = item.downloadable if item.downloadable is defined else true %}
+                      {% set iid = item.id if item.id is defined else none %}
+                      {% set ns.out = ns.out + [{
+                        'type': 'custom:mushroom-template-card',
+                        'entity': s.entity_id,
+                        'layout': 'horizontal',
+                        'icon': 'mdi:file-download-outline' if can else 'mdi:file-outline',
+                        'icon_color': 'cyan' if can else 'grey',
+                        'primary': item.titre or item.label or item.nom or 'Document',
+                        'secondary': ('Appeler téléchargement · ' if can and iid else 'Non téléchargeable · ') ~ (item.date or ''),
+                        'tap_action': (
+                          {'action': 'call-service', 'service': 'optifamily.download',
+                           'data': {'kind': 'document', 'id': iid, 'config_entry_id': s.attributes.config_entry_id}}
+                          if can and iid else {'action': 'more-info'}
+                        ),
+                      }] %}
+                    {% endfor %}
+                  {% endfor %}
+                  {{ ns.out if ns.out else [{'type': 'custom:mushroom-template-card', 'icon': 'mdi:file-document-remove-outline', 'primary': 'Aucun document', 'secondary': 'Changez la portée ci-dessus.', 'tap_action': {'action': 'none'}}] }}
+
+  - title: Infos
+    path: infos
+    icon: mdi:information-outline
+    type: panel
+    cards:
+      - type: custom:mod-card
+        card_mod: {style: *panel_mod}
+        card:
+          type: vertical-stack
+          cards:
+            - type: heading
+              heading: Actualités
+              heading_style: title
+              icon: mdi:newspaper-variant-outline
+            - type: custom:auto-entities
+              show_empty: true
+              card: {type: vertical-stack}
+              card_param: cards
+              filter:
+                template: >
+                  {% set phase = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind')
+                    | selectattr('attributes.optifamily_kind', 'eq', 'phase_journee') | list %}
+                  {% set entry = phase[0].attributes.config_entry_id if phase else none %}
+                  {% set ns = namespace(out=[]) %}
+                  {% for s in states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'actualites_total') | list
+                    if entry is none or s.attributes.config_entry_id == entry %}
+                    {% set ns.out = ns.out + [{
+                      'type': 'custom:mushroom-template-card', 'entity': s.entity_id,
+                      'icon': 'mdi:newspaper-variant-outline', 'icon_color': 'teal',
+                      'primary': (states(s.entity_id) | int(0)) ~ ' actualité(s)',
+                      'tap_action': {'action': 'more-info'},
+                    }] %}
+                    {% for item in (s.attributes.items or [])[:15] %}
+                      {% set ns.out = ns.out + [{
+                        'type': 'custom:mushroom-template-card', 'entity': s.entity_id,
+                        'layout': 'horizontal', 'multiline_secondary': true,
+                        'icon': 'mdi:newspaper', 'icon_color': 'teal',
+                        'primary': item.titre or item.title or 'Actualité',
+                        'secondary': (item.date or '') ~ ('\n' ~ (item.texte or item.texte_court or item.body or '')),
+                        'tap_action': {'action': 'more-info'},
+                      }] %}
+                    {% endfor %}
+                  {% endfor %}
+                  {{ ns.out if ns.out else [{'type': 'custom:mushroom-template-card', 'icon': 'mdi:newspaper-remove', 'primary': 'Aucune actualité', 'tap_action': {'action': 'none'}}] }}
+
+            - type: heading
+              heading: Factures
+              heading_style: title
+              icon: mdi:receipt-text-outline
+            - type: custom:auto-entities
+              show_empty: true
+              card: {type: vertical-stack}
+              card_param: cards
+              filter:
+                template: >
+                  {% set phase = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind')
+                    | selectattr('attributes.optifamily_kind', 'eq', 'phase_journee') | list %}
+                  {% set entry = phase[0].attributes.config_entry_id if phase else none %}
+                  {% set ns = namespace(out=[]) %}
+                  {% for s in states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'facturation_total') | list
+                    if entry is none or s.attributes.config_entry_id == entry %}
+                    {% set ns.out = ns.out + [{
+                      'type': 'custom:mushroom-template-card', 'entity': s.entity_id,
+                      'icon': 'mdi:receipt-text-outline', 'icon_color': 'amber',
+                      'primary': (states(s.entity_id) | int(0)) ~ ' facture(s)',
+                      'tap_action': {'action': 'more-info'},
+                    }] %}
+                    {% for item in (s.attributes.items or [])[:15] %}
+                      {% set can = item.downloadable if item.downloadable is defined else true %}
+                      {% set iid = item.id if item.id is defined else none %}
+                      {% set ns.out = ns.out + [{
+                        'type': 'custom:mushroom-template-card', 'entity': s.entity_id,
+                        'layout': 'horizontal',
+                        'icon': 'mdi:download' if can else 'mdi:receipt',
+                        'icon_color': 'amber' if can else 'grey',
+                        'primary': item.libelle or item.titre or item.label or 'Facture',
+                        'secondary': ('Appeler téléchargement · ' if can and iid else 'Non téléchargeable · ')
+                          ~ (item.montant or '') ~ (' · ' if item.montant and item.date else '') ~ (item.date or ''),
+                        'tap_action': (
+                          {'action': 'call-service', 'service': 'optifamily.download',
+                           'data': {'kind': 'facture', 'id': iid, 'config_entry_id': s.attributes.config_entry_id}}
+                          if can and iid else {'action': 'more-info'}
+                        ),
+                      }] %}
+                    {% endfor %}
+                  {% endfor %}
+                  {{ ns.out if ns.out else [{'type': 'custom:mushroom-template-card', 'icon': 'mdi:receipt-text-remove', 'primary': 'Aucune facture', 'tap_action': {'action': 'none'}}] }}
+
+            - type: heading
+              heading: Messages
+              heading_style: title
+              icon: mdi:mailbox-outline
+            - type: custom:auto-entities
+              show_empty: true
+              card: {type: vertical-stack}
+              card_param: cards
+              filter:
+                template: >
+                  {% set phase = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind')
+                    | selectattr('attributes.optifamily_kind', 'eq', 'phase_journee') | list %}
+                  {% set entry = phase[0].attributes.config_entry_id if phase else none %}
+                  {% set ns = namespace(out=[]) %}
+                  {% for kind, label, color in [
+                    ('messages_unread_creche', 'De la crèche', 'red'),
+                    ('messages_unread_me', 'Vos envois', 'orange')
+                  ] %}
+                    {% for s in states.sensor | selectattr('attributes.optifamily_kind', 'eq', kind) | list
+                      if entry is none or s.attributes.config_entry_id == entry %}
+                      {% set n = states(s.entity_id) | int(0) %}
+                      {% set ns.out = ns.out + [{
+                        'type': 'custom:mushroom-template-card', 'entity': s.entity_id,
+                        'icon': 'mdi:mailbox-open' if n > 0 else 'mdi:mailbox-outline',
+                        'icon_color': color if n > 0 else 'teal',
+                        'primary': label ~ ' · ' ~ n ~ ' non lu(s)',
+                        'secondary': ((s.attributes.total | string) ~ ' au total') if s.attributes.total is defined else '',
+                        'tap_action': {'action': 'more-info'},
+                      }] %}
+                      {% for item in (s.attributes.items or [])[:12] %}
+                        {% set ns.out = ns.out + [{
+                          'type': 'custom:mushroom-template-card', 'entity': s.entity_id,
+                          'layout': 'horizontal', 'multiline_secondary': true,
+                          'icon': 'mdi:message-text-outline', 'icon_color': color,
+                          'primary': item.titre or item.objet or (item.date or 'Message'),
+                          'secondary': (item.date or '') ~ ('\n' ~ (item.message or item.corps or item.body or item.texte or '')),
+                          'tap_action': {'action': 'more-info'},
+                        }] %}
+                      {% endfor %}
+                    {% endfor %}
+                  {% endfor %}
+                  {{ ns.out if ns.out else [{'type': 'custom:mushroom-template-card', 'icon': 'mdi:mailbox-outline', 'primary': 'Aucun message', 'tap_action': {'action': 'none'}}] }}

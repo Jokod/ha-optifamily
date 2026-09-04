@@ -17,7 +17,13 @@ from custom_components.optifamily.config_flow import OptieFamilyConfigFlow, Opti
 from custom_components.optifamily.const import (
     CONF_CRECHE_ID,
     CONF_CRECHE_NAME,
+    CONF_ENABLED_ENFANTS,
     CONF_ENFANTS,
+    CONF_PASSWORD,
+    CONF_USERNAME,
+    DOCUMENTS_SCOPE_CRECHE,
+    DOCUMENTS_SCOPE_ENFANT,
+    DOCUMENTS_SCOPE_FAMILLE,
     DOMAIN,
 )
 from custom_components.optifamily.coordinator import OptieFamilyCoordinator, OptieFamilyData
@@ -234,9 +240,11 @@ async def test_init_setup_entry_retry_refresh(hass: MagicMock) -> None:
 async def test_unload_remove_reload(hass: MagicMock) -> None:
     entry = MagicMock()
     entry.entry_id = "e1"
+    entry.data = {"username": "u@e.com"}
     entry.runtime_data = MagicMock()
     entry.runtime_data.client.logout = AsyncMock()
     entry.runtime_data.async_clear_tokens = AsyncMock()
+    hass.config_entries.async_entries = MagicMock(return_value=[entry])
 
     hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
     assert await optifamily_init.async_unload_entry(hass, entry) is True
@@ -254,10 +262,23 @@ async def test_unload_remove_reload(hass: MagicMock) -> None:
 
     other = MagicMock()
     other.entry_id = "e2"
+    other.data = {"username": "other@e.com"}
     hass.config_entries.async_entries = MagicMock(return_value=[entry, other])
     with patch.object(optifamily_init, "async_uninstall_blueprints", AsyncMock()) as uninst:
         await optifamily_init.async_remove_entry(hass, entry)
         uninst.assert_not_awaited()
+
+    # Même compte encore actif → pas de logout session
+    entry.runtime_data.client.logout = AsyncMock()
+    sibling = MagicMock()
+    sibling.entry_id = "e2"
+    sibling.data = {"username": "u@e.com"}
+    sibling.runtime_data = MagicMock()
+    hass.config_entries.async_entries = MagicMock(return_value=[entry, sibling])
+    hass.config_entries.async_unload_platforms = AsyncMock(return_value=True)
+    assert await optifamily_init.async_unload_entry(hass, entry) is True
+    entry.runtime_data.client.logout.assert_not_awaited()
+
     hass.config_entries.async_entries = MagicMock(return_value=[])
 
     entry.runtime_data = None
@@ -394,7 +415,8 @@ async def test_coordinator_update_partial_and_failures(hass: MagicMock) -> None:
     data.enfants = [{"id": 2, "libelle": "B"}]
     await coord.async_sync_account_metadata(data)
     hass.config_entries.async_update_entry.assert_called()
-    client.set_creche_id.assert_called_with(5)
+    # creche_id config (1) conservé ; client aligné sur la config, pas /me
+    client.set_creche_id.assert_called_with(1)
 
     entry.data = {
         CONF_CRECHE_ID: 5,
@@ -441,6 +463,7 @@ async def test_sensors(planning_present: dict, today: date, hass: MagicMock) -> 
     entry = MagicMock()
     entry.entry_id = "e1"
     entry.data = {CONF_CRECHE_NAME: "Crèche", CONF_ENFANTS: [{"id": 1, "libelle": "Alice"}]}
+    entry.options = {}
 
     coordinator = MagicMock()
     coordinator.data = data
@@ -503,7 +526,8 @@ async def test_sensors(planning_present: dict, today: date, hass: MagicMock) -> 
     g = sensor_mod.OptieFamilyGlobalSensor(coordinator, desc, entry)
     coordinator.data = data
     assert g.native_value == 1
-    assert g.extra_state_attributes == {"optifamily_kind": "x"}
+    assert g.extra_state_attributes["optifamily_kind"] == "x"
+    assert g.extra_state_attributes["config_entry_id"] == "e1"
 
     empty = OptieFamilyData()
     empty.messages = []
@@ -705,3 +729,430 @@ async def test_config_flow_user_and_creche() -> None:
     assert created["data"]["pause_updates_start"] == "21:00:00"
     assert created["data"]["pause_updates_end"] == "06:00:00"
     assert created["data"]["pause_when_closed"] is True
+
+
+# --- suite ---
+
+
+@pytest.mark.asyncio
+async def test_init_configured_creche_and_multi(hass: MagicMock) -> None:
+    entry = MagicMock()
+    entry.entry_id = "e1"
+    entry.data = {"username": "u", "password": "p", CONF_CRECHE_ID: 42}
+    entry.options = {}
+    entry.async_on_unload = MagicMock()
+    entry.add_update_listener = MagicMock(return_value="x")
+
+    coord = MagicMock()
+    coord.async_load_tokens = AsyncMock(return_value=False)
+    coord.async_save_tokens = AsyncMock()
+    coord.async_config_entry_first_refresh = AsyncMock()
+
+    client = MagicMock()
+    client.creche_id = None
+    client.set_creche_id = MagicMock()
+    client.ensure_authenticated = AsyncMock()
+
+    with (
+        patch.object(optifamily_init, "async_get_clientsession", return_value=MagicMock()),
+        patch.object(optifamily_init, "OptieFamilyApiClient", return_value=client),
+        patch.object(optifamily_init, "OptieFamilyCoordinator", return_value=coord),
+    ):
+        assert await optifamily_init.async_setup_entry(hass, entry) is True
+    client.set_creche_id.assert_called_with(42)
+
+    entry.data = {"username": "u", "password": "p"}
+    client.creche_id = None
+    client.discover_creches = AsyncMock(return_value=[{"id": 1}, {"id": 2}])
+    with (
+        patch.object(optifamily_init, "async_get_clientsession", return_value=MagicMock()),
+        patch.object(optifamily_init, "OptieFamilyApiClient", return_value=client),
+        patch.object(optifamily_init, "OptieFamilyCoordinator", return_value=coord),
+        pytest.raises(Exception) as excinfo,
+    ):
+        await optifamily_init.async_setup_entry(hass, entry)
+    assert "Plusieurs crèches" in str(excinfo.value) or excinfo.value.__class__.__name__
+
+
+@pytest.mark.asyncio
+async def test_coordinator_enabled_enfants_and_metadata(hass: MagicMock) -> None:
+    entry = MagicMock()
+    entry.entry_id = "e1"
+    entry.data = {CONF_ENFANTS: [{"id": 1, "libelle": "A"}], CONF_CRECHE_ID: "bad"}
+    entry.options = {CONF_ENABLED_ENFANTS: [1]}
+
+    client = MagicMock()
+    client.get_tokens.return_value = {}
+    client.set_token_listener = MagicMock()
+    client.creche_id = None
+    client.set_creche_id = MagicMock()
+
+    coord = OptieFamilyCoordinator(hass, client, entry)
+    with patch.object(coord, "async_save_tokens", new=AsyncMock()):
+        coord._schedule_save_tokens()
+        assert hass.async_create_task.called
+
+    data = OptieFamilyData()
+    # configured non convertible → except TypeError/ValueError (l.219-220)
+    entry.data = {CONF_ENFANTS: [{"id": 1, "libelle": "A"}], CONF_CRECHE_ID: object()}
+    data.me = {"creche": {"id": 55, "nom": "X"}}
+    data.enfants = [{"id": 1, "libelle": "A"}]
+    client.creche_id = None
+    await coord.async_sync_account_metadata(data)
+
+    data.me = {"creche": {"id": "nope", "nom": "X"}}
+    await coord.async_sync_account_metadata(data)
+
+    # configured None → take /me
+    entry.data = {CONF_ENFANTS: [{"id": 1, "libelle": "A"}]}
+    data.me = {"creche": {"id": 55, "nom": "New"}}
+    client.creche_id = None
+    await coord.async_sync_account_metadata(data)
+    client.set_creche_id.assert_called_with(55)
+
+    # sync enabled: invalid current → set; newcomers; purge
+    entry.data = {
+        CONF_ENFANTS: [{"id": 1, "libelle": "A"}],
+        CONF_CRECHE_ID: 55,
+        CONF_CRECHE_NAME: "New",
+    }
+    entry.options = {CONF_ENABLED_ENFANTS: "broken"}
+    data.enfants = [{"id": 1, "libelle": "A"}, {"id": 2, "libelle": "B"}]
+    with patch.object(coord, "_purge_disabled_enfants") as purge:
+        await coord.async_sync_account_metadata(data)
+        purge.assert_called()
+
+    entry.options = {CONF_ENABLED_ENFANTS: [1]}
+    data.enfants = [{"id": 1, "libelle": "A"}, {"id": 2, "libelle": "B"}]
+    # previous known = [1], newcomer 2 must be added
+    assert coord._sync_enabled_enfants_options(data.enfants) is True
+    # already synced
+    entry.options = {CONF_ENABLED_ENFANTS: [1, 2]}
+    assert coord._sync_enabled_enfants_options(data.enfants) is False
+    # None → False
+    entry.options = {}
+    assert coord._sync_enabled_enfants_options(data.enfants) is False
+
+    entry.options = {CONF_ENABLED_ENFANTS: [1]}
+    entry.data = {
+        CONF_ENFANTS: [{"id": 1, "libelle": "A"}, {"id": 2, "libelle": "B"}],
+        CONF_CRECHE_ID: 55,
+    }
+    coord.known_enfant_ids = {1, 2}
+    coord.known_calendar_enfant_ids = {1, 2}
+    with patch(
+        "custom_components.optifamily.coordinator.async_purge_enfant_devices",
+        return_value=2,
+    ) as purge_dev:
+        coord._purge_disabled_enfants(data.enfants)
+        purge_dev.assert_called()
+    assert 2 not in coord.known_enfant_ids
+
+    entry.options = {CONF_ENABLED_ENFANTS: [1, 2]}
+    coord._purge_disabled_enfants(data.enfants)  # nothing excluded
+
+    entry.options = {}
+    coord._purge_disabled_enfants(data.enfants)  # enabled None
+
+    await coord.async_set_documents_scope(DOCUMENTS_SCOPE_FAMILLE, 9)
+    assert coord.documents_scope == DOCUMENTS_SCOPE_FAMILLE
+    assert coord.documents_enfant_id == 9
+    with pytest.raises(ValueError):
+        await coord.async_set_documents_scope("nope")
+
+
+@pytest.mark.asyncio
+async def test_config_flow_reauth_and_options() -> None:
+    flow = OptieFamilyConfigFlow()
+    flow.hass = MagicMock()
+    flow.context = {"entry_id": "e1"}
+    reauth_entry = MagicMock()
+    reauth_entry.entry_id = "e1"
+    reauth_entry.data = {
+        CONF_USERNAME: "u@e.com",
+        CONF_PASSWORD: "old",
+        CONF_CRECHE_ID: 1001,
+    }
+    flow.hass.config_entries.async_get_entry = MagicMock(return_value=reauth_entry)
+    flow.hass.config_entries.async_update_entry = MagicMock()
+    flow.hass.config_entries.async_reload = AsyncMock()
+
+    form = await flow.async_step_reauth({CONF_USERNAME: "u@e.com", CONF_CRECHE_ID: 1001})
+    assert form["type"] == "form"
+
+    client = MagicMock()
+    client.authenticate = AsyncMock()
+    with (
+        patch(
+            "custom_components.optifamily.config_flow.async_get_clientsession",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "custom_components.optifamily.config_flow.OptieFamilyApiClient",
+            return_value=client,
+        ),
+    ):
+        result = await flow.async_step_reauth_confirm({CONF_PASSWORD: "new"})
+    assert result["type"] == "abort"
+    assert result["reason"] == "reauth_successful"
+
+    for exc, key in (
+        (OptieFamilyAuthError("a"), "invalid_auth"),
+        (OptieFamilyConnectionError("c"), "cannot_connect"),
+        (OptieFamilyApiError(500, "e"), "cannot_connect"),
+        (RuntimeError("r"), "unknown"),
+    ):
+        flow = OptieFamilyConfigFlow()
+        flow.hass = MagicMock()
+        flow.context = {"entry_id": "e1"}
+        flow._reauth_entry = reauth_entry
+        client.authenticate = AsyncMock(side_effect=exc)
+        with (
+            patch(
+                "custom_components.optifamily.config_flow.async_get_clientsession",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "custom_components.optifamily.config_flow.OptieFamilyApiClient",
+                return_value=client,
+            ),
+        ):
+            result = await flow.async_step_reauth_confirm({CONF_PASSWORD: "x"})
+        assert result["errors"]["base"] == key
+
+    # me creche mismatch + bad id
+    flow = OptieFamilyConfigFlow()
+    flow.hass = MagicMock()
+    flow._flow_data = {CONF_USERNAME: "u@e.com", CONF_PASSWORD: "p"}
+    flow._creches = [{"id": 1, "nom": "A"}]
+    client = MagicMock()
+    client.set_creche_id = MagicMock()
+    client.authenticate = AsyncMock()
+    client.get_me = AsyncMock(return_value={"creche": {"id": "bad", "nom": "X"}, "nom": "P"})
+    client.get_enfants = AsyncMock(return_value=[{"id": 2, "libelle": "E"}])
+    with (
+        patch(
+            "custom_components.optifamily.config_flow.async_get_clientsession",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "custom_components.optifamily.config_flow.OptieFamilyApiClient",
+            return_value=client,
+        ),
+    ):
+        result = await flow.async_step_creche({CONF_CRECHE_ID: "1"})
+    assert result["type"] == "create_entry"
+
+    flow = OptieFamilyConfigFlow()
+    flow.hass = MagicMock()
+    flow._flow_data = {CONF_USERNAME: "u@e.com", CONF_PASSWORD: "p"}
+    flow._creches = [{"id": 1, "nom": "A"}]
+    client.get_me = AsyncMock(return_value={"creche": {"id": 99, "nom": "Other"}, "nom": "P"})
+    client.get_enfants = AsyncMock(return_value=[])
+    with (
+        patch(
+            "custom_components.optifamily.config_flow.async_get_clientsession",
+            return_value=MagicMock(),
+        ),
+        patch(
+            "custom_components.optifamily.config_flow.OptieFamilyApiClient",
+            return_value=client,
+        ),
+    ):
+        result = await flow.async_step_creche({CONF_CRECHE_ID: "1"})
+    assert result["data"][CONF_CRECHE_ID] == 1
+
+    # options with enabled_enfants
+    options = OptieFamilyOptionsFlow()
+    options.hass = MagicMock()
+    options.config_entry = MagicMock(
+        data={CONF_ENFANTS: [{"id": 1, "libelle": "A"}, {"id": 2, "libelle": "B"}]},
+        options={CONF_ENABLED_ENFANTS: [1, 2]},
+    )
+    form = await options.async_step_init(None)
+    assert form["type"] == "form"
+
+    with patch("custom_components.optifamily.config_flow.async_purge_enfant_devices") as purge:
+        created = await options.async_step_init(
+            {
+                "scan_interval_minutes": 30,
+                "pause_updates": True,
+                "pause_updates_start": "21:00:00",
+                "pause_updates_end": "06:00:00",
+                "pause_when_closed": True,
+                CONF_ENABLED_ENFANTS: ["1", "bad", 2],
+            }
+        )
+    assert created["type"] == "create_entry"
+    assert set(created["data"][CONF_ENABLED_ENFANTS]) == {1, 2}
+
+    # string raw_enabled + empty → all_ids fallback + purge
+    options.config_entry.options = {CONF_ENABLED_ENFANTS: [1]}
+    with patch("custom_components.optifamily.config_flow.async_purge_enfant_devices") as purge:
+        created = await options.async_step_init(
+            {
+                "scan_interval_minutes": 30,
+                "pause_updates": False,
+                "pause_updates_start": "21:00:00",
+                "pause_updates_end": "06:00:00",
+                "pause_when_closed": False,
+                CONF_ENABLED_ENFANTS: "1",
+            }
+        )
+        purge.assert_called()
+    assert created["data"][CONF_ENABLED_ENFANTS] == [1]
+
+    options.config_entry.options = {CONF_ENABLED_ENFANTS: [1, 2]}
+    created = await options.async_step_init(
+        {
+            "scan_interval_minutes": 30,
+            "pause_updates": True,
+            "pause_updates_start": "21:00:00",
+            "pause_updates_end": "06:00:00",
+            "pause_when_closed": True,
+            CONF_ENABLED_ENFANTS: "",
+        }
+    )
+    assert set(created["data"][CONF_ENABLED_ENFANTS]) == {1, 2}
+
+
+@pytest.mark.asyncio
+async def test_sensors_phase_resume_documents(hass: MagicMock) -> None:
+    data = OptieFamilyData()
+    data.enfants = [{"id": 1, "libelle": "Alice"}]
+    day = date.today()
+    data.plannings = {
+        1: {
+            "semaines": [
+                {
+                    "journees": [
+                        {
+                            "date": day.isoformat(),
+                            "creneaux": [{"type": "regulier", "label": "08:00 - 18:00"}],
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+    data.messages = [{"vu": False, "sender": False, "date": "d"}]
+    data.documents = [{"id": 1}]
+    data.documents_famille = [{"id": 2}]
+    data.documents_enfant = {1: [{"id": 3}]}
+
+    entry = MagicMock()
+    entry.entry_id = "e1"
+    entry.data = {CONF_CRECHE_NAME: "C", CONF_ENFANTS: [{"id": 1, "libelle": "Alice"}]}
+    entry.options = {}
+
+    coordinator = MagicMock()
+    coordinator.data = data
+    coordinator.known_enfant_ids = set()
+    coordinator.documents_scope = DOCUMENTS_SCOPE_CRECHE
+    coordinator.documents_enfant_id = None
+    coordinator.scan_interval = 1800
+    coordinator.last_sync_at = datetime.now()
+    coordinator.transmissions_view_date = date.today()
+    coordinator.transmissions_journal = {}
+    coordinator.async_add_listener = MagicMock(return_value=lambda: None)
+    coordinator.async_update_listeners = MagicMock()
+    entry.runtime_data = coordinator
+    entry.async_on_unload = MagicMock()
+
+    tick_cb: list[Any] = []
+
+    def _track(_hass: Any, action: Any, _interval: Any) -> Any:
+        tick_cb.append(action)
+        return lambda: None
+
+    added: list[Any] = []
+    with patch("custom_components.optifamily.sensor.async_track_time_interval", _track):
+        await sensor_mod.async_setup_entry(hass, entry, added.extend)
+
+    assert tick_cb
+    tick_cb[0](datetime.now())
+    coordinator.async_update_listeners.assert_called()
+
+    phase = next(e for e in added if isinstance(e, sensor_mod.OptieFamilyPhaseSensor))
+    resume = next(e for e in added if isinstance(e, sensor_mod.OptieFamilyResumeSensor))
+    docs = next(e for e in added if isinstance(e, sensor_mod.OptieFamilyDocumentsSensor))
+
+    assert isinstance(phase.native_value, str)
+    assert "phase" in phase.extra_state_attributes
+    assert isinstance(resume.native_value, str)
+    assert resume.extra_state_attributes["optifamily_kind"] == "resume"
+
+    assert docs.native_value == 1
+    attrs = docs.extra_state_attributes
+    assert attrs["scope"] == DOCUMENTS_SCOPE_CRECHE
+    assert attrs["counts"]["creche"] == 1
+
+    coordinator.documents_scope = DOCUMENTS_SCOPE_FAMILLE
+    assert docs.native_value == 1
+    assert docs.extra_state_attributes["scope"] == DOCUMENTS_SCOPE_FAMILLE
+
+    coordinator.documents_scope = DOCUMENTS_SCOPE_ENFANT
+    coordinator.documents_enfant_id = 1
+    assert docs.native_value == 1
+
+    coordinator.data = None
+    assert docs.native_value == 0
+    assert docs.extra_state_attributes["counts"]["creche"] == 0
+
+    # helpers
+    coordinator.data = data
+    assert sensor_mod._documents_for_scope(coordinator)[0] == DOCUMENTS_SCOPE_ENFANT
+    coordinator.documents_scope = DOCUMENTS_SCOPE_CRECHE
+    assert sensor_mod._summary_for_entry(coordinator, entry)["count"] >= 1
+    coordinator.data = None
+    assert sensor_mod._summary_for_entry(coordinator, entry)["count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_coordinator_skips_disabled_enfants_polling(hass: MagicMock) -> None:
+    """Polling enfant limité aux IDs suivis (plan 1.1.0)."""
+    entry = MagicMock()
+    entry.entry_id = "e1"
+    entry.data = {
+        CONF_ENFANTS: [
+            {"id": 1, "libelle": "A"},
+            {"id": 2, "libelle": "B"},
+        ],
+        CONF_CRECHE_ID: 1,
+    }
+    entry.options = {CONF_ENABLED_ENFANTS: [1]}
+
+    client = MagicMock()
+    client.get_tokens.return_value = {}
+    client.set_token_listener = MagicMock()
+    client.creche_id = 1
+    client.get_me = AsyncMock(return_value={"id": 1})
+    client.get_enfants = AsyncMock(
+        return_value=[{"id": 1, "libelle": "A"}, {"id": 2, "libelle": "B"}]
+    )
+    client.get_planning_current_month = AsyncMock(return_value={})
+    client.get_transmissions = AsyncMock(return_value=[])
+    client.get_albums = AsyncMock(return_value=[])
+    client.get_actualites = AsyncMock(return_value={"total": 0})
+    client.get_messages = AsyncMock(return_value=[])
+    client.get_documents = AsyncMock(return_value=[])
+    client.get_documents_famille = AsyncMock(return_value=[])
+    client.get_documents_enfant = AsyncMock(return_value=[])
+    client.get_facturation = AsyncMock(return_value=[])
+
+    coord = OptieFamilyCoordinator(hass, client, entry)
+    with (
+        patch.object(coord, "async_save_tokens", new=AsyncMock()),
+        patch.object(coord, "async_sync_account_metadata", new=AsyncMock()),
+    ):
+        data = await coord._async_update_data()
+
+    assert 1 in data.plannings
+    assert 2 not in data.plannings
+    assert 2 not in data.documents_enfant
+    client.get_planning_current_month.assert_awaited_once_with(1)
+    client.get_documents_enfant.assert_awaited_once_with(1)
+
+    coord.data = data
+    await coord.async_set_transmissions_view_date(date.today())
+    assert set(coord.transmissions_journal) == {1}

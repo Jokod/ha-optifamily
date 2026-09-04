@@ -80,6 +80,9 @@ def test_last_refresh_sensor_exposes_timestamp_and_interval() -> None:
     assert sensor.native_value == when
     assert sensor.extra_state_attributes == {
         "optifamily_kind": "dernier_rafraichissement",
+        "config_entry_id": "entry-test",
+        "creche_id": None,
+        "creche_name": None,
         "intervalle_secondes": 1800,
         "intervalle_minutes": 30,
     }

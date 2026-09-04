@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -16,6 +17,7 @@ from custom_components.optifamily.const import (
     CONF_ENFANTS,
     CONF_PAUSE_UPDATES,
     CONF_PAUSE_WHEN_CLOSED,
+    DOMAIN,
     is_update_paused,
     parse_clock,
 )
@@ -25,6 +27,7 @@ from custom_components.optifamily.coordinator import (
     _famille_id_from_me,
     _PlanningCacheEntry,
 )
+from custom_components.optifamily.exceptions import OptieFamilyApiError
 from custom_components.optifamily.models import (
     _transmission_chips,
     _transmission_detail_text,
@@ -175,41 +178,42 @@ async def test_coordinator_pause_and_journal(hass: MagicMock) -> None:
     coord.data = data
     with patch.object(coord, "_is_in_pause_window", return_value=False):
         paused_closed = await coord._async_update_data()
-    assert paused_closed is data
-    assert client.get_me.await_count == 1
-    assert coord._pause_reason() == "crèche fermée / aucun créneau aujourd'hui"
+        assert paused_closed is data
+        assert client.get_me.await_count == 1
+        assert coord._pause_reason() == "crèche fermée / aucun créneau aujourd'hui"
 
-    coord.entry.options = {CONF_PAUSE_WHEN_CLOSED: "0"}
-    assert coord._is_creche_closed_pause() is False
-    coord.entry.options = {CONF_PAUSE_WHEN_CLOSED: "yes"}
-    saved = coord.data
-    coord.data = None
-    assert coord._is_creche_closed_pause() is False
-    coord.data = saved
-    coord.entry.options = {CONF_PAUSE_WHEN_CLOSED: True}
+        coord.entry.options = {CONF_PAUSE_WHEN_CLOSED: "0"}
+        assert coord._is_creche_closed_pause() is False
+        coord.entry.options = {CONF_PAUSE_WHEN_CLOSED: "yes"}
+        saved = coord.data
+        coord.data = None
+        assert coord._is_creche_closed_pause() is False
+        coord.data = saved
+        coord.entry.options = {CONF_PAUSE_WHEN_CLOSED: True}
 
-    # Réactive le polling (créneau régulier) pour la suite des tests
-    data.plannings = {
-        1: {
-            "semaines": [
-                {
-                    "journees": [
-                        {
-                            "date": closed_day,
-                            "creneaux": [{"type": "regulier", "label": "08:00 - 18:00"}],
-                        }
-                    ]
-                }
-            ]
+        # Réactive le polling (créneau régulier) pour la suite des tests
+        data.plannings = {
+            1: {
+                "semaines": [
+                    {
+                        "journees": [
+                            {
+                                "date": closed_day,
+                                "creneaux": [{"type": "regulier", "label": "08:00 - 18:00"}],
+                            }
+                        ]
+                    }
+                ]
+            }
         }
-    }
-    coord.data = data
-    assert coord._pause_reason() is None
+        coord.data = data
+        assert coord._pause_reason() is None
 
     client.get_documents_famille = AsyncMock(side_effect=RuntimeError("f"))
     client.get_documents_enfant = AsyncMock(side_effect=RuntimeError("e"))
     client.get_me = AsyncMock(return_value={"famille": {"id": 1}})
-    await coord._async_update_data()
+    with patch.object(coord, "_is_in_pause_window", return_value=False):
+        await coord._async_update_data()
 
     client.get_transmissions = AsyncMock(side_effect=RuntimeError("t"))
     day = date.today() - timedelta(days=1)
@@ -274,14 +278,15 @@ def test_is_in_pause_window_string_and_import_fallback(hass: MagicMock) -> None:
 
 @pytest.mark.asyncio
 async def test_services_set_shift_and_unload(hass: MagicMock) -> None:
-    hass.services.has_service = MagicMock(side_effect=[False, True, True, True])
+    hass.services.has_service = MagicMock(side_effect=[False, True, True, True, True])
     services_mod.async_setup_services(hass)
-    assert hass.services.async_register.call_count == 2
+    assert hass.services.async_register.call_count == 4
     services_mod.async_setup_services(hass)  # already registered
 
     coord = MagicMock(spec=OptieFamilyCoordinator)
     coord.async_set_transmissions_view_date = AsyncMock()
     coord.async_shift_transmissions_view_date = AsyncMock()
+    coord.async_set_documents_scope = AsyncMock()
     entry = MagicMock()
     entry.entry_id = "e1"
     entry.runtime_data = coord
@@ -306,9 +311,14 @@ async def test_services_set_shift_and_unload(hass: MagicMock) -> None:
     await services_mod._async_shift_date(call)
     coord.async_shift_transmissions_view_date.assert_awaited_with(-1)
 
+    call.data = {"scope": "famille", "config_entry_id": "e1"}
+    await services_mod._async_set_documents_scope(call)
+    coord.async_set_documents_scope.assert_awaited()
+
     hass.config_entries.async_entries = MagicMock(return_value=[])
     await services_mod._async_set_date(MagicMock(hass=hass, data={"date": "2026-01-01"}))
     await services_mod._async_shift_date(MagicMock(hass=hass, data={"days": 1}))
+    await services_mod._async_set_documents_scope(MagicMock(hass=hass, data={"scope": "creche"}))
 
     hass.config_entries.async_entries = MagicMock(return_value=[entry])
     services_mod.async_unload_services(hass)
@@ -317,10 +327,118 @@ async def test_services_set_shift_and_unload(hass: MagicMock) -> None:
     hass.config_entries.async_entries = MagicMock(return_value=[])
     hass.services.has_service = MagicMock(return_value=True)
     services_mod.async_unload_services(hass)
-    assert hass.services.async_remove.call_count == 2
+    assert hass.services.async_remove.call_count == 4
 
 
 def test_parse_day_helpers() -> None:
     assert services_mod._parse_day(date(2026, 1, 2)) == date(2026, 1, 2)
     assert services_mod._parse_day(datetime(2026, 1, 2, 8, 0)) == date(2026, 1, 2)
     assert services_mod._parse_day("2026-01-03T12:00:00") == date(2026, 1, 3)
+
+
+# --- tests issus de la répartition domain-based ---
+
+
+@pytest.mark.asyncio
+async def test_services_download_paths(hass: MagicMock, tmp_path: Path) -> None:
+    hass.config.path = lambda *parts: str(tmp_path.joinpath(*parts))
+    hass.bus.async_fire = MagicMock()
+
+    data = OptieFamilyData()
+    data.documents = [{"id": "d1", "download_url": "https://ex/d1.pdf"}]
+    data.documents_famille = [{"id": "f1", "url": "https://ex/f1.pdf"}]
+    data.documents_enfant = {1: [{"id": "e1", "path": "/files/e1.pdf"}]}
+    data.facturation = [{"id": "bill1", "fileUrl": "https://ex/bill.pdf"}]
+    data.albums = {
+        1: [
+            {
+                "id": "alb1",
+                "photos": [{"id": "ph1", "mediaUrl": "https://ex/p1.jpg"}],
+            },
+            "skip",
+            {"id": "alb2", "medias": [{"id": "ph2", "url": "https://ex/p2.jpg"}]},
+        ]
+    }
+
+    coord = MagicMock(spec=OptieFamilyCoordinator)
+    coord.data = data
+    coord.client = MagicMock()
+    coord.client.download_bytes = AsyncMock(return_value=b"BYTES")
+
+    entry = MagicMock()
+    entry.entry_id = "e1"
+    entry.runtime_data = coord
+    hass.config_entries.async_entries = MagicMock(return_value=[entry])
+
+    call = MagicMock()
+    call.hass = hass
+
+    # no targets
+    hass.config_entries.async_entries = MagicMock(return_value=[])
+    call.data = {"kind": "document", "id": "d1"}
+    await services_mod._async_download(call)
+    hass.bus.async_fire.assert_not_called()
+
+    hass.config_entries.async_entries = MagicMock(return_value=[entry])
+
+    # document by id
+    call.data = {"kind": "document", "id": "d1", "config_entry_id": "e1"}
+    await services_mod._async_download(call)
+    assert any(c.args[0] == f"{DOMAIN}_download_ready" for c in hass.bus.async_fire.call_args_list)
+
+    # facture
+    call.data = {"kind": "facture", "id": "bill1"}
+    await services_mod._async_download(call)
+
+    # photo by photo id + enfant
+    call.data = {"kind": "photo", "id": "ph1", "enfant_id": 1}
+    await services_mod._async_download(call)
+
+    # photo album id without enfant (flat search)
+    call.data = {"kind": "photo", "id": "alb1"}
+    await services_mod._async_download(call)
+
+    # photo not found
+    call.data = {"kind": "photo", "id": "missing"}
+    await services_mod._async_download(call)
+    assert any(
+        c.args[0] == f"{DOMAIN}_download_failed" and c.args[1]["reason"] == "not_downloadable"
+        for c in hass.bus.async_fire.call_args_list
+    )
+
+    # explicit url
+    call.data = {"kind": "document", "id": "x", "download_url": "https://ex/x.bin"}
+    await services_mod._async_download(call)
+
+    # download API error
+    coord.client.download_bytes = AsyncMock(side_effect=OptieFamilyApiError(500, "fail"))
+    call.data = {"kind": "document", "id": "d1"}
+    await services_mod._async_download(call)
+
+    # no data
+    coord.data = None
+    call.data = {"kind": "document", "id": "d1"}
+    await services_mod._async_download(call)
+
+    # find candidate branches
+    coord.data = data
+    assert (
+        services_mod._find_download_candidate(coord, kind="document", item_id="f1", enfant_id=None)
+        is not None
+    )
+    assert (
+        services_mod._find_download_candidate(coord, kind="document", item_id="e1", enfant_id=None)
+        is not None
+    )
+    assert (
+        services_mod._find_download_candidate(coord, kind="photo", item_id="ph2", enfant_id=None)
+        is not None
+    )
+    assert (
+        services_mod._find_download_candidate(coord, kind="photo", item_id="no", enfant_id=99)
+        is None
+    )
+    assert (
+        services_mod._find_download_candidate(coord, kind="facture", item_id="no", enfant_id=None)
+        is None
+    )

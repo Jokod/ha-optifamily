@@ -102,26 +102,33 @@ Puis redémarrez Home Assistant.
 |---|---|
 | Enfants | Nombre d’enfants suivis |
 | Enfants en crèche aujourd’hui | Combien d’enfants sont prévus aujourd’hui (+ leurs prénoms) |
-| Messages non lus (crèche) | Messages reçus de la crèche non lus |
-| Messages non lus (moi) | Messages que vous avez envoyés encore non lus |
-| Actualités / Documents / Factures | Compteurs utiles pour des notifications |
+| Phase journée | `maison` · `deposer` · `creche` · `chercher` · `rentre` · `ferme` · `inconnu` |
+| Résumé journée | Message FR contextuel (hero dashboard) |
+| Attention | Binary sensor « problème » si messages non lus ou dépôt/récupération ≤ 90 min |
+| Messages non lus (crèche) | Messages reçus + `items[]` (corps) |
+| Messages non lus (moi) | Messages envoyés encore non lus |
+| Actualités / Documents / Factures | Compteurs + `items[]` riches (téléchargement docs/factures) |
 
 ### Par enfant (un appareil Home Assistant chacun)
 
 | Capteur | Utilité |
 |---|---|
-| Présent aujourd’hui | `présent` / `absent` / `inconnu` |
+| Présent aujourd’hui | `présent` / `absent` / `inconnu` + `statut_jour`, `plages`, `phase_enfant`, `message` |
 | Créneaux ce mois | Nombre de créneaux réguliers |
 | Transmissions du jour | Compteur + timeline (cartes sieste / change / repas…) |
 | Journal transmissions | Même timeline pour une date naviguable |
-| Albums | Nombre d’albums photos |
+| Albums | Nombre d’albums + photos (`items[]`, download) |
 
 Les noms exacts des entités dépendent du **nom de la crèche** et des prénoms
 (ex. `sensor.ma_creche_enfants`, `sensor.lea_present_aujourd_hui`).
-Les tableaux de bord fournis retrouvent tout seuls les capteurs via l’attribut `optifamily_kind`.
+Les tableaux de bord fournis retrouvent tout seuls les capteurs via l’attribut `optifamily_kind`
+(et `config_entry_id` en multi-crèche).
 
-Un **calendrier** `calendar.optifamily_planning` alimente l’aperçu « Cette semaine » et l’onglet **Calendrier** (mois).
+Un **calendrier famille** par entry (`calendar.optifamily_planning_<entry8>`) alimente
+l’aperçu semaine et l’onglet **Calendrier**.
 
+Dans **Configurer** l’intégration : multi-select **Enfants suivis** — les exclus sont
+retirés du suivi (plus de polling enfant) et leurs devices/entités sont purgés.
 ---
 
 ## Automatisations & tableau de bord
@@ -148,19 +155,16 @@ Après installation **HACS** (et un redémarrage), les blueprints sont copiés a
 
 ### Tableau de bord
 
-| Fichier | Langue |
-|---|---|
-| `dashboards/optifamily.fr.yaml` | Français |
-| `dashboards/optifamily.en.yaml` | English |
+Fichier unique FR : [`dashboards/optifamily.yaml`](dashboards/optifamily.yaml).
 
 Import : **Paramètres → Tableaux de bord → Ajouter → Importer YAML**.
 Les cartes détectent l’intégration automatiquement (`optifamily_kind`).
+En multi-crèche : **un dashboard par entry** (filtre `config_entry_id`).
 
-Les vues sont en **panel plein largeur** (plus de colonnes HA bridées).
-Le thème `optifamily` est aussi **copié automatiquement** dans `config/themes/`
-(utile si vous réutilisez des sections). Une fois : `frontend:` →
-`themes: !include_dir_merge_named themes` dans `configuration.yaml`, puis
-recharger les thèmes.
+Les vues sont en **panel plein largeur**. Le thème `optifamily` (tokens
+`--optifamily-*` pour card-mod) est **copié automatiquement** dans `config/themes/`.
+Une fois : `frontend:` → `themes: !include_dir_merge_named themes` dans
+`configuration.yaml`, puis recharger les thèmes.
 
 Cartes Lovelace HACS à installer **à la main** (HACS → Frontend). L’intégration **ne les installe pas**.
 
@@ -170,24 +174,26 @@ Cartes Lovelace HACS à installer **à la main** (HACS → Frontend). L’intég
 | card-mod | [lovelace-card-mod](https://github.com/thomasloven/lovelace-card-mod) |
 | auto-entities | [lovelace-auto-entities](https://github.com/thomasloven/lovelace-auto-entities) |
 | week-planner-card | [week-planner-card](https://github.com/FamousWolf/week-planner-card) |
+| layout-card (mod-card) | [lovelace-layout-card](https://github.com/thomasloven/lovelace-layout-card) |
 
-Onglets : **Aujourd’hui**, **Enfants**, **Transmissions** (journal jour par jour) et **Calendrier** (mois). Sans ces plugins, l’import affiche « custom element doesn’t exist ».
+Onglets : **Accueil**, **Enfants**, **Transmissions**, **Médias** (albums + documents), **Infos** (actualités / factures / messages). Sans ces plugins, l’import affiche « custom element doesn’t exist ».
 
-Services utiles pour le journal : `optifamily.set_transmissions_date` (date `YYYY-MM-DD`) et `optifamily.shift_transmissions_date` (`days: -1` / `1`).
+Services : `optifamily.set_transmissions_date` / `shift_transmissions_date`,
+`optifamily.set_documents_scope` (`creche` \| `famille` \| `enfant`),
+`optifamily.download` (photo / document / facture → `/local/optifamily/...`).
 
 
 ### Package helpers (optionnel)
 
-`packages/optifamily_helpers.yaml` ajoute une couche **pilotée par les états** :
+`packages/optifamily_helpers.yaml` = **confort notifications uniquement**
+(plus de logique métier phase/attention — celle-ci vit dans l’intégration) :
 
 | Élément | Rôle |
 |---|---|
-| `sensor.optifamily_phase_journee` | Phase du jour : `maison` · `deposer` · `creche` · `chercher` · `rentre` |
-| `sensor.optifamily_resume_texte` | Résumé texte + détail (présents, messages, créneaux) |
-| `binary_sensor.optifamily_attention` | « on » si messages non lus ou phase déposer/chercher |
 | `input_boolean.optifamily_quiet_hours` | Mode silencieux (branchable sur les blueprints) |
-| `input_boolean.optifamily_quiet_auto` + horaires | Silencieux automatique soir → matin |
-| `script.optifamily_notify_resume` | Envoie le résumé (ignore si silencieux) |
+| `input_boolean.optifamily_quiet_auto` + horaires | Silencieux automatique (défaut 21:00 → **06:00**) |
+| `script.optifamily_notify_resume` | Envoie le résumé via les capteurs d’intégration |
+| `script.optifamily_toggle_quiet` | Bascule le mode silencieux |
 
 Activation typique dans `configuration.yaml` :
 
@@ -196,9 +202,16 @@ homeassistant:
   packages: !include_dir_named packages
 ```
 
-Puis copiez le fichier dans `config/packages/`. Aucun entity_id de crèche à adapter : découverte via `optifamily_kind`.
+Puis copiez le fichier dans `config/packages/`.
 
-Sur le tableau de bord, la rangée de raccourcis (silencieux / attention / résumé) n’apparaît que si le package est chargé.
+### Migration depuis 1.0.x
+
+1. Mettre à jour l’intégration HACS → redémarrer HA
+2. Recharger les thèmes
+3. Remplacer/re-importer `dashboards/optifamily.yaml`
+4. Mettre à jour le package helpers (sinon doublons phase/attention templates)
+5. Si 2ᵉ crèche : vérifier le nouvel `entity_id` calendrier famille
+6. Re-binder les blueprints sur phase / résumé si besoin
 
 ### Exemple YAML : notification message non lu
 

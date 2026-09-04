@@ -68,7 +68,7 @@ class OptieFamilyFamilyCalendar(CoordinatorEntity[OptieFamilyCoordinator], Calen
         super().__init__(coordinator)
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_planning_calendar_family"
-        self.entity_id = "calendar.optifamily_planning"
+        self.entity_id = f"calendar.optifamily_planning_{entry.entry_id[:8]}"
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -82,7 +82,14 @@ class OptieFamilyFamilyCalendar(CoordinatorEntity[OptieFamilyCoordinator], Calen
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        return {"optifamily_kind": "planning_family"}
+        from .const import CONF_CRECHE_ID, CONF_CRECHE_NAME
+
+        return {
+            "optifamily_kind": "planning_family",
+            "config_entry_id": self._entry.entry_id,
+            "creche_id": self._entry.data.get(CONF_CRECHE_ID),
+            "creche_name": self._entry.data.get(CONF_CRECHE_NAME),
+        }
 
     @property
     def event(self) -> CalendarEvent | None:

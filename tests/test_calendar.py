@@ -24,6 +24,7 @@ async def test_calendar_setup_and_events(
     entry = MagicMock()
     entry.entry_id = "e1"
     entry.data = {"creche_name": "Crèche", "enfants": [{"id": 1, "libelle": "Alice"}]}
+    entry.options = {}
 
     coordinator = MagicMock()
     coordinator.data = data
@@ -53,7 +54,7 @@ async def test_calendar_setup_and_events(
     assert family.device_info["name"] == "Crèche"
     assert child.extra_state_attributes["enfant_libelle"] == "Alice"
     assert family.extra_state_attributes["optifamily_kind"] == "planning_family"
-    assert family.entity_id == "calendar.optifamily_planning"
+    assert family.entity_id.startswith("calendar.optifamily_planning_")
 
     start = datetime.combine(today - timedelta(days=1), datetime.min.time(), tzinfo=UTC)
     end = datetime.combine(today + timedelta(days=2), datetime.min.time(), tzinfo=UTC)

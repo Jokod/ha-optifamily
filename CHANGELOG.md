@@ -7,10 +7,46 @@ et ce projet adhère au [Versionnement Sémantique](https://semver.org/lang/fr/)
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-05
+
+### Added
+- **DayContext** : source unique Python pour phase / présence / fermeture / multi-créneaux (`statut_jour`, messages FR)
+- Capteurs intégration : **Phase journée**, **Résumé journée**, binary_sensor **Attention** (fenêtre 90 min + messages)
+- Tick local 60 s (recalcul phase sans appel API)
+- Listes riches `items[]` : albums/photos, documents, actualités, factures, messages (corps)
+- Services `optifamily.set_documents_scope` et `optifamily.download` → `/local/optifamily/...`
+- Options **Enfants suivis** (multi-select) + purge auto devices/entités exclus
+- Reauth config flow ; persistance tokens après chaque login/refresh
+- Attributs scope `config_entry_id` / `creche_id` / `creche_name` sur les entités
+
+### Changed
+- Dashboard unique FR : `dashboards/optifamily.yaml` (zéro `regex_findall` horaires)
+- Package helpers = **quiet hours + scripts** uniquement (fin silencieux 06:00) — plus de Jinja phase/attention
+- Calendrier famille : `entity_id` préfixé par entry (plus de clash multi-crèche)
+- Blueprints : phase / `present.message` / `phase_enfant` (plus de parse labels)
+- `creche_id` config conservé si `/me` diverge ; logout unload prudent (même compte multi-entry)
+- Polling API limité aux enfants suivis
+- FR only : suppression dashboard EN et `translations/en.json`
+
+### Migration 1.0.x → 1.1.0
+1. Mettre à jour HACS → redémarrer HA
+2. Recharger les thèmes (nouveaux tokens panel `--optifamily-*`)
+3. Remplacer/re-importer le dashboard `dashboards/optifamily.yaml`
+4. Mettre à jour le package helpers (sinon doublons phase/attention templates)
+5. Si 2ᵉ crèche : vérifier le nouvel `entity_id` calendrier famille (l’ancien fixe peut rester orphelin)
+6. Re-pointer éventuel des blueprints sur les nouveaux capteurs (phase / résumé)
+
+**Breaking soft** : entity_ids package phase/attention si vous gardiez les templates ; calendrier famille `entity_id` change.
+
 ## [1.0.11] - 2026-09-04
 
 ### Added
 - Pause polling si crèche fermée / aucun créneau du jour (option `pause_when_closed`, défaut activée)
+
+### Fixed
+- Dashboard FR : « Mis à jour il y a X heures » (plus de `relative_time` anglais)
+- Présence / bandeau : un jour **fermeture** n’affiche plus « Allez déposer » (fermeture prioritaire sur un créneau régulier)
+- Package helpers : phase `deposer` / attention « Problème » seulement dans les **90 min** avant le dépôt (plus de rouge dès minuit)
 
 ## [1.0.10] - 2026-09-04
 

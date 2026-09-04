@@ -1,6 +1,6 @@
 [project]
 name = "ha-optifamily"
-version = "1.0.11"
+version = "1.1.0"
 description = "Intégration Home Assistant non officielle pour optiFamily"
 readme = "README.md"
 requires-python = ">=3.13"

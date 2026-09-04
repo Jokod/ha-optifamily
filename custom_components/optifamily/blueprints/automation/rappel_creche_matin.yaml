@@ -65,14 +65,20 @@ condition:
 action:
   - variables:
       creneaux: "{{ state_attr(presence_entity, 'creneaux') | default([]) }}"
+      message: "{{ state_attr(presence_entity, 'message') | default('') }}"
+      plages: "{{ state_attr(presence_entity, 'plages') | default([]) }}"
       horaires: >
-        {% set raw = creneaux or [] %}
-        {% if raw and raw[0] is mapping %}
-          {% set labels = raw | map(attribute='label') | list %}
+        {% if message %}
+          {{ message }}
         {% else %}
-          {% set labels = raw %}
+          {% set raw = plages or creneaux or [] %}
+          {% if raw and raw[0] is mapping %}
+            {% set labels = raw | map(attribute='label') | list %}
+          {% else %}
+            {% set labels = raw %}
+          {% endif %}
+          {{ labels | join(', ') if labels else 'Horaires non disponibles' }}
         {% endif %}
-        {{ labels | join(', ') if labels else 'Horaires non disponibles' }}
       titre: >
         {% if child_label %}
           Crèche — {{ child_label }}
@@ -82,6 +88,11 @@ action:
   - action: !input notify_action
     data:
       title: "{{ titre }}"
-      message: "Présence prévue aujourd'hui. Créneaux : {{ horaires }}."
+      message: >
+        {% if message %}
+          {{ message }}
+        {% else %}
+          Présence prévue aujourd'hui. Créneaux : {{ horaires }}.
+        {% endif %}
 
 mode: single

@@ -289,3 +289,81 @@ async def test_request_server_timeout(api_client: OptieFamilyApiClient) -> None:
         pytest.raises(OptieFamilyConnectionError, match="Timeout"),
     ):
         await api_client.get_me()
+
+
+# --- tests domain-based ---
+
+
+@pytest.mark.asyncio
+async def test_api_token_listener_and_download_bytes(
+    api_client: OptieFamilyApiClient, login_response: dict[str, Any]
+) -> None:
+    calls: list[int] = []
+    api_client.set_token_listener(lambda: calls.append(1))
+
+    with aioresponses() as mocked:
+        mocked.post(_url("/auth/pre-login"), payload=[{"id": 1001, "libelle": "A"}])
+        mocked.post(_url("/auth/login"), payload=login_response)
+        await api_client.authenticate()
+    assert calls == [1]
+
+    with aioresponses() as mocked:
+        mocked.get("https://cdn.example/file.pdf", body=b"%PDF", content_type="application/pdf")
+        payload = await api_client.download_bytes("https://cdn.example/file.pdf")
+    assert payload == b"%PDF"
+
+    with aioresponses() as mocked:
+        mocked.get(_url("/media/a.bin"), body=b"abs")
+        assert await api_client.download_bytes("/media/a.bin") == b"abs"
+
+    with aioresponses() as mocked:
+        mocked.get(_url("/media/b.bin"), body=b"rel")
+        assert await api_client.download_bytes("media/b.bin") == b"rel"
+
+    # 401 then retry success (pas de refresh → login complet)
+    api_client.set_tokens("OLD", None)
+    with aioresponses() as mocked:
+        mocked.get(_url("/media/retry.bin"), status=401, body=b"no")
+        mocked.post(_url("/auth/pre-login"), payload=[{"id": 1001, "libelle": "A"}])
+        mocked.post(_url("/auth/login"), payload=login_response)
+        mocked.get(_url("/media/retry.bin"), body=b"ok")
+        assert await api_client.download_bytes("/media/retry.bin") == b"ok"
+
+    # 401 then retry error
+    api_client.set_tokens("OLD", None)
+    with aioresponses() as mocked:
+        mocked.get(_url("/media/fail.bin"), status=401, body=b"no")
+        mocked.post(_url("/auth/pre-login"), payload=[{"id": 1001, "libelle": "A"}])
+        mocked.post(_url("/auth/login"), payload=login_response)
+        mocked.get(_url("/media/fail.bin"), status=500, body=b"err")
+        with pytest.raises(OptieFamilyApiError):
+            await api_client.download_bytes("/media/fail.bin")
+
+    # direct >= 400
+    api_client.set_tokens("A", "R")
+    with aioresponses() as mocked:
+        mocked.get(_url("/media/bad.bin"), status=404, body=b"missing")
+        with pytest.raises(OptieFamilyApiError):
+            await api_client.download_bytes("/media/bad.bin")
+
+    # no token → ensure_authenticated
+    bare = OptieFamilyApiClient("u", "p", api_client._session, creche_id=1001)
+    with aioresponses() as mocked:
+        mocked.post(_url("/auth/pre-login"), payload=[{"id": 1001, "libelle": "A"}])
+        mocked.post(_url("/auth/login"), payload=login_response)
+        mocked.get(_url("/media/auth.bin"), body=b"z")
+        assert await bare.download_bytes("/media/auth.bin") == b"z"
+
+    # ClientError / Timeout
+    api_client.set_tokens("A", "R")
+    with aioresponses() as mocked:
+        mocked.get(_url("/media/to.bin"), exception=TimeoutError("slow"))
+        with pytest.raises(OptieFamilyConnectionError):
+            await api_client.download_bytes("/media/to.bin")
+
+    import aiohttp
+
+    with aioresponses() as mocked:
+        mocked.get(_url("/media/net.bin"), exception=aiohttp.ClientError("net"))
+        with pytest.raises(OptieFamilyConnectionError):
+            await api_client.download_bytes("/media/net.bin")

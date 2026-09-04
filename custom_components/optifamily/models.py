@@ -8,6 +8,11 @@ import re
 from typing import Any
 
 _CRENEAU_BOUNDS = re.compile(r"(\d{1,2})[:hH](\d{2})\s*[-–]\s*(\d{1,2})[:hH](\d{2})")
+_CLOSED_TYPE_RE = re.compile(r"ferm|cong[eé]|absence|closed|f[eé]ri[eé]", re.IGNORECASE)
+_CLOSED_LABEL_RE = re.compile(
+    r"(fermeture|ferm[eé]|closed|cong[eé]s?|absence|f[eé]ri[eé])",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +49,41 @@ def iter_enfants(
     return list(merged.values())
 
 
+def enabled_enfant_ids(
+    all_enfants: list[Enfant],
+    enabled_option: list[Any] | None,
+) -> set[int] | None:
+    """IDs suivis depuis les options ; None = tous."""
+    if enabled_option is None:
+        return None
+    if not isinstance(enabled_option, list | tuple | set):
+        return None
+    ids: set[int] = set()
+    for raw in enabled_option:
+        try:
+            ids.add(int(raw))
+        except (TypeError, ValueError):
+            continue
+    known = {e.id for e in all_enfants}
+    return ids & known if known else ids
+
+
+def iter_enfants_enabled(
+    live_enfants: list[dict[str, Any]],
+    persisted_enfants: list[dict[str, Any]] | None = None,
+    *,
+    enabled_ids: list[Any] | set[int] | None = None,
+) -> list[Enfant]:
+    """Enfants fusionnés filtrés par la liste « enfants suivis »."""
+    enfants = iter_enfants(live_enfants, persisted_enfants)
+    if enabled_ids is None or not isinstance(enabled_ids, list | tuple | set):
+        return enfants
+    allowed = enabled_enfant_ids(enfants, list(enabled_ids))
+    if allowed is None:
+        return enfants
+    return [e for e in enfants if e.id in allowed]
+
+
 def get_today_creneaux(
     planning: dict[str, Any] | None, day: date | None = None
 ) -> list[dict[str, Any]]:
@@ -58,6 +98,32 @@ def get_today_creneaux(
     return []
 
 
+def is_closed_creneau(creneau: Any) -> bool:
+    """True si le créneau représente une fermeture / absence / jour férié."""
+    if not isinstance(creneau, dict):
+        return False
+    ctype = str(creneau.get("type") or "").strip()
+    if ctype and _CLOSED_TYPE_RE.search(ctype):
+        return True
+    blob = f"{creneau.get('label') or ''} {creneau.get('details') or ''}"
+    return bool(_CLOSED_LABEL_RE.search(blob))
+
+
+def is_jour_fermeture(planning: dict[str, Any] | None, day: date | None = None) -> bool:
+    """True si le jour contient au moins un créneau de fermeture."""
+    return any(is_closed_creneau(c) for c in get_today_creneaux(planning, day))
+
+
+def get_attendance_creneaux(
+    planning: dict[str, Any] | None, day: date | None = None
+) -> list[dict[str, Any]]:
+    """Créneaux de présence réelle (réguliers), vide si jour de fermeture."""
+    creneaux = get_today_creneaux(planning, day)
+    if any(is_closed_creneau(c) for c in creneaux):
+        return []
+    return [c for c in creneaux if str(c.get("type") or "").strip().lower() == "regulier"]
+
+
 def get_presence(planning: dict[str, Any] | None, day: date | None = None) -> str:
     """Indique si l'enfant est présent aujourd'hui (`présent` / `absent` / `inconnu`)."""
     if not planning:
@@ -70,9 +136,7 @@ def get_presence(planning: dict[str, Any] | None, day: date | None = None) -> st
     )
     if not day_found:
         return "inconnu"
-    creneaux = get_today_creneaux(planning, day)
-    reguliers = [c for c in creneaux if c.get("type") == "regulier"]
-    return "présent" if reguliers else "absent"
+    return "présent" if get_attendance_creneaux(planning, day) else "absent"
 
 
 def is_creche_closed_for_family(
@@ -106,12 +170,13 @@ def build_enfant_status(
 ) -> dict[str, Any]:
     """Construit le résumé d'un enfant pour capteurs agrégés et tableaux de bord."""
     creneaux = get_today_creneaux(planning, day)
-    reguliers = [c for c in creneaux if c.get("type") == "regulier"]
+    attendance = get_attendance_creneaux(planning, day)
     return {
         "id": enfant.id,
         "libelle": enfant.libelle,
         "presence": get_presence(planning, day),
-        "creneaux": [c.get("label") for c in reguliers if c.get("label")],
+        "jour_fermeture": is_jour_fermeture(planning, day),
+        "creneaux": [c.get("label") for c in attendance if c.get("label")],
         "creneaux_detail": [
             {
                 "type": c.get("type"),
@@ -126,11 +191,25 @@ def build_enfant_status(
     }
 
 
-def build_enfants_summary(data: Any, day: date | None = None) -> dict[str, Any]:
+def build_enfants_summary(
+    data: Any,
+    day: date | None = None,
+    *,
+    enabled_ids: list[Any] | set[int] | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
     """Résumé multi-enfants pour capteurs globaux et templates Lovelace."""
-    enfants = iter_enfants(data.enfants, getattr(data, "persisted_enfants", None))
+    from .day_context import compute_enfant_day, enrich_enfant_status
+
+    enfants = iter_enfants_enabled(
+        data.enfants,
+        getattr(data, "persisted_enfants", None),
+        enabled_ids=enabled_ids,
+    )
     liste: list[dict[str, Any]] = []
     presents: list[str] = []
+    now = now or datetime.now()
+    day = day or now.date()
 
     for enfant in enfants:
         status = build_enfant_status(
@@ -140,6 +219,8 @@ def build_enfants_summary(data: Any, day: date | None = None) -> dict[str, Any]:
             data.albums.get(enfant.id) if hasattr(data, "albums") else None,
             day,
         )
+        ctx = compute_enfant_day(enfant, data.plannings.get(enfant.id), now=now)
+        status = enrich_enfant_status(status, ctx)
         liste.append(status)
         if status["presence"] == "présent":
             presents.append(enfant.libelle)
@@ -574,6 +655,168 @@ class PlanningEvent:
     summary: str
     description: str
     uid: str
+
+
+def _pick_str(data: dict[str, Any], *keys: str) -> str | None:
+    for key in keys:
+        raw = data.get(key)
+        if raw is None:
+            continue
+        text = str(raw).strip()
+        if text:
+            return text
+    return None
+
+
+def _pick_id(data: dict[str, Any], *keys: str) -> str | None:
+    for key in keys:
+        raw = data.get(key)
+        if raw is None or isinstance(raw, dict | list):
+            continue
+        text = str(raw).strip()
+        if text:
+            return text
+    return None
+
+
+def normalize_downloadable_item(
+    raw: Any,
+    *,
+    kind: str,
+    limit_photos: int | None = None,
+) -> dict[str, Any] | None:
+    """Normalise un item API en entrée riche UI (+ métadonnées téléchargement)."""
+    if not isinstance(raw, dict):
+        return None
+    item_id = _pick_id(raw, "id", "photoId", "documentId", "factureId", "mediaId", "uuid")
+    titre = _pick_str(
+        raw,
+        "titre",
+        "title",
+        "label",
+        "libelle",
+        "nom",
+        "name",
+        "filename",
+        "fileName",
+    )
+    download_url = _pick_str(
+        raw,
+        "download_url",
+        "downloadUrl",
+        "url",
+        "mediaUrl",
+        "media_url",
+        "fichierUrl",
+        "fileUrl",
+        "path",
+    )
+    media_id = _pick_id(raw, "mediaId", "media_id", "fichierId", "fileId") or item_id
+    downloadable = bool(download_url or media_id)
+    item: dict[str, Any] = {
+        "id": item_id,
+        "titre": titre or (f"{kind} {item_id}" if item_id else kind),
+        "label": titre or "",
+        "kind": kind,
+        "downloadable": downloadable,
+        "download_url": download_url,
+        "media_id": media_id if downloadable else None,
+        "date": _pick_str(raw, "date", "createdAt", "created_at", "dateCreation"),
+    }
+    if kind == "album":
+        photos_raw = raw.get("photos") or raw.get("medias") or raw.get("images") or []
+        photos: list[dict[str, Any]] = []
+        if isinstance(photos_raw, list):
+            for photo in photos_raw:
+                normalized = normalize_downloadable_item(photo, kind="photo")
+                if normalized:
+                    photos.append(normalized)
+                if limit_photos is not None and len(photos) >= limit_photos:
+                    break
+        item["photos"] = photos
+        item["photos_count"] = len(photos_raw) if isinstance(photos_raw, list) else len(photos)
+    if kind == "message":
+        item["corps"] = (
+            _pick_str(raw, "corps", "body", "contenu", "content", "message", "texte") or ""
+        )
+        item["vu"] = bool(raw.get("vu", True))
+        item["sender"] = bool(raw.get("sender", False))
+        item["downloadable"] = False
+        item["download_url"] = None
+        item["media_id"] = None
+    return item
+
+
+def normalize_album_items(albums: list[Any] | None, *, limit: int = 20) -> list[dict[str, Any]]:
+    """Albums + photos imbriquées pour attributs capteur."""
+    items: list[dict[str, Any]] = []
+    for raw in albums or []:
+        item = normalize_downloadable_item(raw, kind="album", limit_photos=10)
+        if item:
+            items.append(item)
+        if len(items) >= limit:
+            break
+    return items
+
+
+def normalize_document_items(
+    documents: list[Any] | None, *, limit: int = 20
+) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for raw in documents or []:
+        item = normalize_downloadable_item(raw, kind="document")
+        if item:
+            items.append(item)
+        if len(items) >= limit:
+            break
+    return items
+
+
+def normalize_facture_items(factures: list[Any] | None, *, limit: int = 20) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for raw in factures or []:
+        item = normalize_downloadable_item(raw, kind="facture")
+        if item:
+            items.append(item)
+        if len(items) >= limit:
+            break
+    return items
+
+
+def normalize_actualite_items(actualites: Any, *, limit: int = 20) -> list[dict[str, Any]]:
+    raw_list: list[Any]
+    if isinstance(actualites, dict):
+        raw_list = list(actualites.get("actualites") or actualites.get("items") or [])
+    elif isinstance(actualites, list):
+        raw_list = actualites
+    else:
+        raw_list = []
+    items: list[dict[str, Any]] = []
+    for raw in raw_list:
+        if not isinstance(raw, dict):
+            continue
+        item = {
+            "id": _pick_id(raw, "id"),
+            "titre": _pick_str(raw, "titre", "title", "libelle", "label") or "Actualité",
+            "date": _pick_str(raw, "date", "createdAt", "created_at"),
+            "resume": _pick_str(raw, "resume", "summary", "contenu", "content", "texte") or "",
+            "downloadable": False,
+        }
+        items.append(item)
+        if len(items) >= limit:
+            break
+    return items
+
+
+def normalize_message_items(messages: list[Any] | None, *, limit: int = 20) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for raw in messages or []:
+        item = normalize_downloadable_item(raw, kind="message")
+        if item:
+            items.append(item)
+        if len(items) >= limit:
+            break
+    return items
 
 
 def planning_to_events(

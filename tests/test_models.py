@@ -4,17 +4,29 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from custom_components.optifamily.models import (
     Enfant,
     build_enfants_summary,
+    enabled_enfant_ids,
     flatten_planning_jours,
     format_creneau_labels,
+    get_attendance_creneaux,
     get_presence,
     get_today_creneaux,
+    is_closed_creneau,
     is_creche_closed_for_family,
+    is_jour_fermeture,
     iter_enfants,
+    iter_enfants_enabled,
     iter_year_months,
+    normalize_actualite_items,
+    normalize_album_items,
+    normalize_document_items,
+    normalize_downloadable_item,
+    normalize_facture_items,
+    normalize_message_items,
     parse_creneau_bounds,
     planning_to_events,
 )
@@ -43,6 +55,54 @@ def test_get_presence_present(planning_present: dict, today: date) -> None:
 
 def test_get_presence_absent(planning_absent: dict, today: date) -> None:
     assert get_presence(planning_absent, today) == "absent"
+
+
+def test_get_presence_fermeture_overrides_regulier() -> None:
+    today = date.today()
+    assert is_closed_creneau("x") is False
+    assert is_closed_creneau({"type": "regulier", "label": "08:00 - 18:00"}) is False
+    planning = {
+        "semaines": [
+            {
+                "journees": [
+                    {
+                        "date": today.isoformat(),
+                        "creneaux": [
+                            {"type": "regulier", "label": "07:45 - 18:45"},
+                            {"type": "fermeture", "label": "Fermé"},
+                        ],
+                    }
+                ]
+            }
+        ]
+    }
+    assert get_presence(planning, today) == "absent"
+    assert is_jour_fermeture(planning, today) is True
+    assert get_attendance_creneaux(planning, today) == []
+
+
+def test_get_presence_regulier_with_fermeture_label() -> None:
+    today = date.today()
+    planning = {
+        "semaines": [
+            {
+                "journees": [
+                    {
+                        "date": today.isoformat(),
+                        "creneaux": [
+                            {
+                                "type": "regulier",
+                                "label": "07:45 - 18:45",
+                                "details": "fermeture",
+                            }
+                        ],
+                    }
+                ]
+            }
+        ]
+    }
+    assert get_presence(planning, today) == "absent"
+    assert is_jour_fermeture(planning, today) is True
 
 
 def test_get_presence_inconnu() -> None:
@@ -301,3 +361,97 @@ def test_normalize_transmissions_sample() -> None:
     assert items[0]["chips"]
     assert items[0]["color"] == "indigo"
     assert "Début" in items[0]["bloc"]
+
+
+# --- suite ---
+
+
+def test_enabled_enfant_ids_and_iter() -> None:
+    enfants = [Enfant(1, "A"), Enfant(2, "B")]
+    assert enabled_enfant_ids(enfants, None) is None
+    assert enabled_enfant_ids(enfants, "nope") is None  # type: ignore[arg-type]
+    assert enabled_enfant_ids(enfants, [1, "2", "x", None]) == {1, 2}
+    assert enabled_enfant_ids([], [1, 2]) == {1, 2}
+
+    live = [{"id": 1, "libelle": "A"}, {"id": 2, "libelle": "B"}]
+    assert [e.id for e in iter_enfants_enabled(live, enabled_ids=None)] == [1, 2]
+    assert [e.id for e in iter_enfants_enabled(live, enabled_ids="bad")] == [1, 2]  # type: ignore[arg-type]
+    assert [e.id for e in iter_enfants_enabled(live, enabled_ids=[1])] == [1]
+    assert [e.id for e in iter_enfants_enabled(live, enabled_ids=[99])] == []
+    with patch("custom_components.optifamily.models.enabled_enfant_ids", return_value=None):
+        assert [e.id for e in iter_enfants_enabled(live, enabled_ids=[1])] == [1, 2]
+
+
+def test_normalize_downloadable_and_lists() -> None:
+    assert normalize_downloadable_item("x", kind="document") is None
+    nested = normalize_downloadable_item({"id": {"nested": 1}}, kind="document")
+    assert nested is not None and nested["id"] is None
+    assert _pick_via_normalize_id_skip()
+
+    doc = normalize_downloadable_item(
+        {
+            "documentId": 9,
+            "titre": "Doc",
+            "downloadUrl": "https://ex/f.pdf",
+            "date": "2026-01-01",
+        },
+        kind="document",
+    )
+    assert doc and doc["downloadable"] is True and doc["id"] == "9"
+
+    album = normalize_downloadable_item(
+        {
+            "id": 1,
+            "label": "Album",
+            "photos": [
+                {"id": 10, "url": "https://ex/a.jpg"},
+                "skip",
+                {"id": 11, "mediaUrl": "https://ex/b.jpg"},
+                {"id": 12, "path": "/c.jpg"},
+            ],
+        },
+        kind="album",
+        limit_photos=2,
+    )
+    assert album and len(album["photos"]) == 2
+    assert album["photos_count"] == 4
+
+    album_bad_photos = normalize_downloadable_item({"id": 2, "medias": "not-a-list"}, kind="album")
+    assert album_bad_photos and album_bad_photos["photos"] == []
+
+    msg = normalize_downloadable_item(
+        {"id": 3, "corps": "bonjour", "vu": False, "sender": True}, kind="message"
+    )
+    assert msg and msg["downloadable"] is False and msg["corps"] == "bonjour"
+
+    albums = [{"id": i, "photos": []} for i in range(25)]
+    assert len(normalize_album_items(albums, limit=3)) == 3
+    assert normalize_album_items(None) == []
+
+    docs = [{"id": i} for i in range(5)] + ["bad"]
+    assert len(normalize_document_items(docs, limit=2)) == 2
+    assert len(normalize_facture_items([{"factureId": 1}], limit=1)) == 1
+    assert normalize_facture_items([None], limit=1) == []  # type: ignore[list-item]
+
+    assert normalize_actualite_items(None) == []
+    assert normalize_actualite_items("x") == []
+    assert len(normalize_actualite_items([{"id": 1}, "x", {"titre": "T"}], limit=10)) == 2
+    assert (
+        len(
+            normalize_actualite_items(
+                {"items": [{"id": i, "resume": "r"} for i in range(30)]}, limit=5
+            )
+        )
+        == 5
+    )
+    assert normalize_actualite_items({"actualites": [{"libelle": "A"}]})[0]["titre"] == "A"
+
+    msgs = [{"id": i, "message": "m"} for i in range(10)]
+    assert len(normalize_message_items(msgs, limit=3)) == 3
+    assert normalize_message_items(None) == []
+
+
+def _pick_via_normalize_id_skip() -> bool:
+    """Force _pick_id to skip dict/list values then find a scalar."""
+    item = normalize_downloadable_item({"id": [1, 2], "uuid": "u-1", "name": "x"}, kind="document")
+    return item is not None and item["id"] == "u-1"

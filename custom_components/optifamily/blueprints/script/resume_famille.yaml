@@ -1,9 +1,8 @@
 blueprint:
   name: OptiFamily — Script résumé famille
   description: >
-    Script réutilisable qui construit un texte de résumé (phase, présents, messages,
-    transmissions) à partir des capteurs agrégés. À appeler depuis une
-    automatisation, un bouton Lovelace ou une notification.
+    Script réutilisable qui construit un texte de résumé à partir des capteurs
+    d’intégration (enfants, messages, phase/résumé optionnels).
     Respecte le mode silencieux optionnel (package helpers).
   domain: script
   author: ha-optifamily
@@ -21,6 +20,24 @@ blueprint:
       name: Capteur messages non lus
       description: >
         Capteur « Messages non lus (crèche) » ou « Messages non lus (moi) »
+      selector:
+        entity:
+          filter:
+            - domain: sensor
+              integration: optifamily
+    phase_sensor:
+      name: Capteur phase journée (optionnel)
+      description: Capteur OptiFamily « Phase journée » (optifamily_kind: phase_journee)
+      default:
+      selector:
+        entity:
+          filter:
+            - domain: sensor
+              integration: optifamily
+    resume_sensor:
+      name: Capteur résumé (optionnel)
+      description: Capteur OptiFamily « Résumé journée » (optifamily_kind: resume)
+      default:
       selector:
         entity:
           filter:
@@ -44,6 +61,8 @@ sequence:
   - variables:
       enfants_entity: !input enfants_sensor
       messages_entity: !input messages_sensor
+      phase_entity: !input phase_sensor
+      resume_entity: !input resume_sensor
       quiet_entity: !input quiet_hours
   - condition: template
     value_template: >
@@ -56,15 +75,26 @@ sequence:
       unread: "{{ states(messages_entity) | int(0) }}"
       transmissions_total: >
         {{ liste | map(attribute='transmissions') | map('int', 0) | sum }}
-      phase_lib: "{{ state_attr('sensor.optifamily_phase_journee', 'libelle') }}"
+      phase_lib: >
+        {{ state_attr(phase_entity, 'libelle')
+           if phase_entity not in [none, '', 'none'] else none }}
+      resume_txt: >
+        {{ states(resume_entity)
+           if resume_entity not in [none, '', 'none']
+              and states(resume_entity) not in ['unknown', 'unavailable', none, '']
+           else none }}
       resume: >
         OptiFamily — {{ now().strftime('%d/%m %H:%M') }}
+        {% if resume_txt %}
+        {{ resume_txt }}
+        {% else %}
         {% if phase_lib and phase_lib not in ['unknown', 'unavailable', none] %}
         Phase : {{ phase_lib }}
         {% endif %}
         Présents : {{ presents | join(', ') if presents else 'aucun' }}
         Messages non lus ({{ state_attr(messages_entity, 'origine') | default('?') }}) : {{ unread }}
         Transmissions du jour : {{ transmissions_total }}
+        {% endif %}
   - action: !input notify_action
     data:
       title: "OptiFamily"

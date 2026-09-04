@@ -26,6 +26,15 @@ blueprint:
           filter:
             - domain: sensor
               integration: optifamily
+    phase_sensor:
+      name: Capteur phase journée (optionnel)
+      description: Capteur OptiFamily « Phase journée » (optifamily_kind: phase_journee)
+      default:
+      selector:
+        entity:
+          filter:
+            - domain: sensor
+              integration: optifamily
     bilan_time:
       name: Heure du bilan
       default: "19:30:00"
@@ -67,6 +76,7 @@ action:
   - variables:
       enfants_entity: !input enfants_sensor
       messages_entity: !input messages_sensor
+      phase_entity: !input phase_sensor
       only_activity: !input only_if_activity
       liste: "{{ state_attr(enfants_entity, 'liste') | default([]) }}"
       presents: >
@@ -77,15 +87,20 @@ action:
       unread: "{{ states(messages_entity) | int(0) }}"
       has_activity: >
         {{ presents | length > 0 or unread > 0 or transmissions_total > 0 }}
-      phase: "{{ states('sensor.optifamily_phase_journee') }}"
-      phase_lib: "{{ state_attr('sensor.optifamily_phase_journee', 'libelle') }}"
+      phase: >
+        {{ states(phase_entity)
+           if phase_entity not in [none, '', 'none'] else '' }}
+      phase_lib: >
+        {{ state_attr(phase_entity, 'libelle')
+           if phase_entity not in [none, '', 'none'] else none }}
   - condition: template
     value_template: "{{ (not only_activity) or has_activity }}"
   - variables:
       lignes_enfants: >
         {% for e in liste %}
-        • {{ e.libelle }} — {{ e.presence }}
-        {%- if e.creneaux %} ({{ e.creneaux | join(', ') }}){% endif %}
+        • {{ e.libelle }} — {{ e.message | default(e.presence) }}
+        {%- if e.plages %} ({{ e.plages | map(attribute='label') | list | join(' · ') }})
+        {%- elif e.creneaux %} ({{ e.creneaux | join(', ') }}){% endif %}
         {%- if e.transmissions %} · {{ e.transmissions }} transmission(s){% endif %}
 
         {% endfor %}

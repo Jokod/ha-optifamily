@@ -95,9 +95,10 @@ Décrivez :
 | `strings.json` / `translations/` | Internationalisation |
 | `blueprints.py` | Copie des blueprints vers `config/blueprints` au setup |
 | `blueprints/automation/` | YAML d'automatisation (emballés dans le composant HACS) |
-| `dashboards/optifamily.fr.yaml` | Lovelace 4 vues (FR) — Mushroom, card-mod, auto-entities, week-planner-card |
-| `dashboards/optifamily.en.yaml` | Same layout (EN) |
-| `packages/optifamily_helpers.yaml` | Helpers optionnels (phase, silencieux, résumé) |
+| `dashboards/optifamily.yaml` | Lovelace panel FR — Mushroom, card-mod, auto-entities, week-planner |
+| `packages/optifamily_helpers.yaml` | Quiet hours + scripts (pas de logique métier) |
+| `day_context.py` | Phase / présence / messages FR (source de vérité) |
+| `binary_sensor.py` | Capteur attention famille |
 
 ### Règles de sécurité (obligatoires)
 
@@ -110,8 +111,7 @@ Décrivez :
 ### Traductions
 
 - Toute nouvelle clé UI doit être ajoutée dans `strings.json`.
-- Fournir au minimum les traductions **français** (`translations/fr.json`) et **anglais** (`translations/en.json`).
-
+- L’intégration est **FR only** (`translations/fr.json`) ; pas de miroir EN.
 ### Tests & lint
 
 - Ajoutez des tests pour toute nouvelle logique métier significative.
