@@ -3,6 +3,7 @@ blueprint:
   description: >
     Envoie une notification le matin si l'enfant est prévu en crèche aujourd'hui,
     avec le détail des créneaux du jour.
+    Respecte le mode silencieux optionnel (package helpers).
   domain: automation
   author: ha-optifamily
   homeassistant:
@@ -21,6 +22,15 @@ blueprint:
       default: "07:30:00"
       selector:
         time:
+    quiet_hours:
+      name: Mode silencieux (optionnel)
+      description: >
+        Si « on », aucune notification. Ex. input_boolean.optifamily_quiet_hours.
+      default:
+      selector:
+        entity:
+          filter:
+            - domain: input_boolean
     notify_action:
       name: Action de notification
       description: >
@@ -35,6 +45,11 @@ blueprint:
       selector:
         text:
 
+trigger_variables:
+  presence_entity: !input presence_sensor
+  quiet_entity: !input quiet_hours
+  child_label: !input child_name
+
 trigger:
   - platform: time
     at: !input reminder_time
@@ -43,10 +58,13 @@ condition:
   - condition: state
     entity_id: !input presence_sensor
     state: "présent"
+  - condition: template
+    value_template: >
+      {{ quiet_entity in [none, '', 'none'] or not is_state(quiet_entity, 'on') }}
 
 action:
   - variables:
-      creneaux: "{{ state_attr(input.presence_sensor, 'creneaux') | default([]) }}"
+      creneaux: "{{ state_attr(presence_entity, 'creneaux') | default([]) }}"
       horaires: >
         {% set raw = creneaux or [] %}
         {% if raw and raw[0] is mapping %}
@@ -56,8 +74,8 @@ action:
         {% endif %}
         {{ labels | join(', ') if labels else 'Horaires non disponibles' }}
       titre: >
-        {% if input.child_name %}
-          Crèche — {{ input.child_name }}
+        {% if child_label %}
+          Crèche — {{ child_label }}
         {% else %}
           Crèche aujourd'hui
         {% endif %}

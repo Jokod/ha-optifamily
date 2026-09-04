@@ -3,6 +3,7 @@ blueprint:
   description: >
     Envoie une notification lorsque le nombre de messages non lus optiFamily augmente.
     Préférez le capteur « Messages non lus (crèche) » pour les alertes reçues.
+    Respecte le mode silencieux optionnel (package helpers).
   domain: automation
   author: ha-optifamily
   homeassistant:
@@ -17,6 +18,15 @@ blueprint:
           filter:
             - domain: sensor
               integration: optifamily
+    quiet_hours:
+      name: Mode silencieux (optionnel)
+      description: >
+        Si « on », aucune notification. Ex. input_boolean.optifamily_quiet_hours.
+      default:
+      selector:
+        entity:
+          filter:
+            - domain: input_boolean
     notify_action:
       name: Action de notification
       description: >
@@ -24,6 +34,10 @@ blueprint:
         (ex. notify.mobile_app_mon_telephone).
       selector:
         action:
+
+trigger_variables:
+  messages_entity: !input messages_sensor
+  quiet_entity: !input quiet_hours
 
 trigger:
   - platform: state
@@ -35,12 +49,15 @@ condition:
       {{ trigger.to_state.state not in ['unknown', 'unavailable']
          and trigger.from_state.state not in ['unknown', 'unavailable']
          and trigger.to_state.state | int(0) > trigger.from_state.state | int(0) }}
+  - condition: template
+    value_template: >
+      {{ quiet_entity in [none, '', 'none'] or not is_state(quiet_entity, 'on') }}
 
 action:
   - variables:
-      unread_count: "{{ states(input.messages_sensor) | int(0) }}"
-      last_date: "{{ state_attr(input.messages_sensor, 'last_unread_date') or state_attr(input.messages_sensor, 'last_message_date') }}"
-      origine: "{{ state_attr(input.messages_sensor, 'origine') | default('inconnu') }}"
+      unread_count: "{{ states(messages_entity) | int(0) }}"
+      last_date: "{{ state_attr(messages_entity, 'last_unread_date') or state_attr(messages_entity, 'last_message_date') }}"
+      origine: "{{ state_attr(messages_entity, 'origine') | default('inconnu') }}"
   - choose:
       - conditions:
           - condition: template

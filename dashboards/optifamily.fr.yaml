@@ -148,7 +148,12 @@ views:
                   {% else %}{{ n }} en crèche
                   {% endif %}
               - type: template
-                icon: mdi:email-receive-outline
+                icon: >
+                  {% set m = states.sensor
+                    | selectattr('attributes', 'contains', 'optifamily_kind')
+                    | selectattr('attributes.optifamily_kind', 'eq', 'messages_unread_creche') | list %}
+                  {% set n = (m[0].state | int(0)) if m else 0 %}
+                  {{ 'mdi:mailbox-open' if n > 0 else 'mdi:mailbox-outline' }}
                 icon_color: >
                   {% set m = states.sensor
                     | selectattr('attributes', 'contains', 'optifamily_kind')
@@ -173,6 +178,78 @@ views:
                     Mis à jour {{ relative_time(as_datetime(sync[0].state)) }}
                   {% else %}Synchro inconnue
                   {% endif %}
+
+      - type: grid
+        column_span: 3
+        cards:
+          - type: conditional
+            conditions:
+              - condition: template
+                value_template: >
+                  {{ states('input_boolean.optifamily_quiet_hours') not in ['unknown', 'unavailable'] }}
+            card:
+              type: custom:mushroom-chips-card
+              alignment: center
+              card_mod:
+                style: |
+                  ha-card {
+                    border: none;
+                    box-shadow: none;
+                    background: transparent;
+                  }
+              chips:
+                - type: template
+                  entity: sensor.optifamily_phase_journee
+                  icon: >
+                    {% set p = states('sensor.optifamily_phase_journee') %}
+                    {% if p == 'deposer' %}mdi:car-child-seat
+                    {% elif p == 'creche' %}mdi:baby-face-outline
+                    {% elif p == 'chercher' %}mdi:clock-end
+                    {% elif p == 'rentre' %}mdi:home-import-outline
+                    {% elif p == 'maison' %}mdi:home-heart
+                    {% else %}mdi:timeline-clock-outline
+                    {% endif %}
+                  icon_color: >
+                    {% set p = states('sensor.optifamily_phase_journee') %}
+                    {% if p == 'deposer' %}amber
+                    {% elif p == 'creche' %}teal
+                    {% elif p == 'chercher' %}orange
+                    {% elif p == 'rentre' or p == 'maison' %}blue-grey
+                    {% else %}cyan
+                    {% endif %}
+                  content: >
+                    {% set p = states('sensor.optifamily_phase_journee') %}
+                    {{ state_attr('sensor.optifamily_phase_journee', 'libelle') or p }}
+                    {%- set mins = state_attr('sensor.optifamily_phase_journee', 'minutes') -%}
+                    {%- if mins is not none and mins | int(-1) >= 0 and p in ['deposer', 'chercher'] %} · {{ mins }} min{% endif %}
+                  tap_action:
+                    action: more-info
+                - type: template
+                  entity: input_boolean.optifamily_quiet_hours
+                  icon: "{{ 'mdi:bell-off' if is_state('input_boolean.optifamily_quiet_hours', 'on') else 'mdi:bell-outline' }}"
+                  icon_color: "{{ 'deep-orange' if is_state('input_boolean.optifamily_quiet_hours', 'on') else 'teal' }}"
+                  content: "{{ 'Silencieux' if is_state('input_boolean.optifamily_quiet_hours', 'on') else 'Notifications' }}"
+                  tap_action:
+                    action: toggle
+                - type: template
+                  entity: binary_sensor.optifamily_attention
+                  icon: "{{ 'mdi:bell-badge' if is_state('binary_sensor.optifamily_attention', 'on') else 'mdi:check-circle-outline' }}"
+                  icon_color: "{{ 'red' if is_state('binary_sensor.optifamily_attention', 'on') else 'teal' }}"
+                  content: >
+                    {% if is_state('binary_sensor.optifamily_attention', 'on') %}
+                      {{ state_attr('binary_sensor.optifamily_attention', 'raison') or 'Attention' }}
+                    {% else %}Tout va bien
+                    {% endif %}
+                  tap_action:
+                    action: more-info
+                - type: template
+                  entity: script.optifamily_notify_resume
+                  icon: mdi:text-box-outline
+                  icon_color: cyan
+                  content: Résumé
+                  tap_action:
+                    action: call-service
+                    service: script.optifamily_notify_resume
 
       - type: grid
         cards:
@@ -308,7 +385,7 @@ views:
           - type: heading
             heading: Boîte aux lettres
             heading_style: title
-            icon: mdi:mailbox-open-outline
+            icon: mdi:mailbox-outline
           - type: custom:auto-entities
             show_empty: false
             unique: entity_id
@@ -322,7 +399,7 @@ views:
                   options:
                     type: custom:mushroom-template-card
                     entity: this.entity_id
-                    icon: mdi:email-receive
+                    icon: "{{ 'mdi:mailbox-open' if states(entity) | int(0) > 0 else 'mdi:mailbox-outline' }}"
                     layout: horizontal
                     multiline_secondary: true
                     tap_action:
@@ -347,7 +424,7 @@ views:
                   options:
                     type: custom:mushroom-template-card
                     entity: this.entity_id
-                    icon: mdi:email-send
+                    icon: "{{ 'mdi:mailbox-up' if states(entity) | int(0) > 0 else 'mdi:mailbox-outline' }}"
                     layout: horizontal
                     multiline_secondary: true
                     tap_action:
@@ -365,6 +442,48 @@ views:
                     icon_color: "{{ 'orange' if states(entity) | int(0) > 0 else 'teal' }}"
                     badge_icon: "{{ 'mdi:bell-badge' if states(entity) | int(0) > 0 else none }}"
                     badge_color: orange
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Transmissions
+            heading_style: title
+            icon: mdi:clipboard-text-outline
+          - type: custom:auto-entities
+            show_empty: false
+            unique: entity_id
+            sort:
+              method: state
+              numeric: true
+              reverse: true
+            card:
+              type: vertical-stack
+            card_param: cards
+            filter:
+              exclude:
+                - state: "0"
+                - state: unavailable
+                - state: unknown
+              include:
+                - attributes:
+                    optifamily_kind: transmissions
+                  options:
+                    type: custom:mushroom-template-card
+                    entity: this.entity_id
+                    layout: horizontal
+                    tap_action:
+                      action: more-info
+                    card_mod:
+                      style: |
+                        ha-card { border-radius: 22px; border: none; box-shadow: none; }
+                    icon: mdi:clipboard-text-outline
+                    icon_color: teal
+                    badge_icon: mdi:bell-badge
+                    badge_color: teal
+                    primary: "{{ state_attr(entity, 'enfant_libelle') or 'Enfant' }}"
+                    secondary: >
+                      {% set n = states(entity) | int(0) %}
+                      {{ n }} transmission{{ 's' if n != 1 }} aujourd’hui
 
       - type: grid
         cards:
@@ -445,90 +564,119 @@ views:
         column_span: 3
         cards:
           - type: heading
-            heading: Aperçu des 7 prochains jours
+            heading: Semaine à venir
             heading_style: title
-            icon: mdi:calendar-week
-          - type: markdown
-            content: |
-              {% set jn = ['lun.','mar.','mer.','jeu.','ven.','sam.','dim.'] %}
-              {% set slots = states.sensor
-                | selectattr('attributes', 'contains', 'optifamily_kind')
-                | selectattr('attributes.optifamily_kind', 'eq', 'planning_slots') | list %}
-              {% set start = now().date() %}
-              <div class="of-week">
-              {% for i in range(7) %}
-              {% set day = start + timedelta(days=i) %}
-              {% set bits = namespace(items=[]) %}
-              {% for s in slots %}
-              {% for row in s.attributes.jours or [] %}
-              {% set raw = as_datetime(row.date) if row.date else none %}
-              {% set jd = raw.date() if raw else none %}
-              {% if jd == day %}
-              {% set bits.items = bits.items + [ (s.attributes.enfant_libelle or 'Enfant') ~ ' · ' ~ (row.creneaux | join(' · ')) ] %}
-              {% endif %}
-              {% endfor %}
-              {% endfor %}
-              <div class="of-day{% if i == 0 %} of-today{% endif %}{% if day.weekday() >= 5 %} of-weekend{% endif %}{% if bits.items | length == 0 %} of-empty{% endif %}">
-              <div class="of-kicker">{{ jn[day.weekday()] }}</div>
-              <div class="of-num">{{ day.day }}</div>
-              <div class="of-body">{% if bits.items %}{% for line in bits.items %}<div class="of-line">{{ line }}</div>{% endfor %}{% else %}<div class="of-libre">Libre</div>{% endif %}</div>
-              </div>
-              {% endfor %}
-              </div>
-            card_mod:
-              style:
-                .: |
+            icon: mdi:view-week-outline
+          - type: custom:auto-entities
+            show_empty: false
+            unique: entity
+            card:
+              type: custom:week-planner-card
+              days: 7
+              startingDay: today
+              locale: fr
+              timeFormat: HH:mm
+              compact: true
+              showNavigation: true
+              showLegend: false
+              combineSimilarEvents: true
+              noCardBackground: true
+              eventBackground: color-mix(in srgb, #0d9488 14%, var(--ha-card-background, var(--card-background-color)))
+              dayFormat: '''<span class="number">''d''</span><span class="month">''ccc''</span>'''
+              texts:
+                noEvents: Aucun créneau
+                fullDay: Journée entière
+                today: Aujourd’hui
+                tomorrow: Demain
+                yesterday: Hier
+                moreEvents: Plus de créneaux
+              card_mod:
+                style: |
                   ha-card {
-                    border-radius: 24px;
+                    border-radius: 20px;
                     border: none;
                     box-shadow: none;
-                    overflow: hidden;
+                    background: transparent;
+                    padding: 0;
+                    --events-margin-top: 6px;
+                    --event-spacing: 3px;
+                    --event-padding: 3px 6px;
+                    --event-border-width: 3px;
+                    --event-font-size: 0.72rem;
+                    --event-line-height: 1.15em;
                   }
-                ha-markdown:
-                  $: |
-                    .of-week {
-                      display: grid;
-                      grid-template-columns: repeat(7, minmax(0, 1fr));
-                      gap: 10px;
-                    }
-                    @media (max-width: 1100px) {
-                      .of-week { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-                    }
-                    @media (max-width: 700px) {
-                      .of-week { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-                    }
-                    .of-day {
-                      border-radius: 18px;
-                      padding: 12px 10px 14px;
-                      min-height: 8.75rem;
-                      background: color-mix(in srgb, var(--primary-color) 8%, var(--ha-card-background, var(--card-background-color)));
-                      transition: opacity .15s ease;
-                    }
-                    .of-today {
-                      background: color-mix(in srgb, #0d9488 24%, var(--ha-card-background, var(--card-background-color)));
-                      box-shadow: inset 0 0 0 2px #0d9488;
-                    }
-                    .of-weekend {
-                      background: color-mix(in srgb, var(--primary-color) 4%, var(--ha-card-background, var(--card-background-color)));
-                    }
-                    .of-empty { opacity: 0.7; }
-                    .of-kicker {
-                      font-size: 0.68rem;
-                      letter-spacing: 0.1em;
-                      text-transform: uppercase;
-                      opacity: 0.65;
-                      font-weight: 600;
-                    }
-                    .of-num {
-                      font-size: 1.7rem;
-                      font-weight: 750;
-                      line-height: 1.1;
-                      margin: 4px 0 10px;
-                      letter-spacing: -0.02em;
-                    }
-                    .of-body { font-size: 0.76rem; line-height: 1.4; }
-                    .of-line + .of-line { margin-top: 4px; }
-                    .of-libre { opacity: 0.42; font-style: italic; }
+                  .day {
+                    border-radius: 12px;
+                    background: color-mix(in srgb, var(--primary-color) 7%, var(--ha-card-background, var(--card-background-color)));
+                    padding: 6px 5px 8px;
+                    min-height: 0;
+                  }
+                  .day.today {
+                    box-sizing: border-box;
+                    background: color-mix(in srgb, #0d9488 20%, var(--ha-card-background, var(--card-background-color)));
+                    box-shadow: inset 0 0 0 1.5px #0d9488;
+                  }
+                  .day.saturday,
+                  .day.sunday {
+                    opacity: 0.88;
+                  }
+                  .event {
+                    border-radius: 0 8px 8px 0;
+                    border-top: none;
+                    border-right: none;
+                    border-bottom: none;
+                  }
+                  .event.past {
+                    opacity: 0.45;
+                  }
+                  .event[data-summary*="Fermeture" i],
+                  .event[data-summary*="fermeture" i] {
+                    --border-color: #dc2626;
+                    background: color-mix(in srgb, #dc2626 14%, var(--ha-card-background, var(--card-background-color)));
+                  }
+                  .number {
+                    display: block;
+                    font-size: 1.15rem;
+                    font-weight: 750;
+                    letter-spacing: -0.02em;
+                    line-height: 1.05;
+                  }
+                  .month {
+                    display: block;
+                    font-size: 0.58rem;
+                    letter-spacing: 0.06em;
+                    text-transform: uppercase;
+                    opacity: 0.65;
+                    font-weight: 600;
+                    margin-bottom: 2px;
+                  }
+            card_param: calendars
+            filter:
+              template: >
+                {% set colors = ['#0d9488', '#0284c7', '#d97706', '#7c3aed', '#db2777', '#059669'] %}
+                {% set fam = states.calendar
+                  | selectattr('attributes', 'contains', 'optifamily_kind')
+                  | selectattr('attributes.optifamily_kind', 'eq', 'planning_family')
+                  | list %}
+                {% set kids = states.calendar
+                  | selectattr('attributes', 'contains', 'optifamily_kind')
+                  | selectattr('attributes.optifamily_kind', 'eq', 'planning')
+                  | list %}
+                {% set src = fam if fam else kids %}
+                {% set ns = namespace(items=[]) %}
+                {% for c in src %}
+                  {% set name = state_attr(c.entity_id, 'friendly_name')
+                    or c.attributes.friendly_name
+                    or c.name
+                    or 'OptiFamily' %}
+                  {% set ns.items = ns.items + [{
+                    'entity': c.entity_id,
+                    'name': name,
+                    'color': colors[loop.index0 % (colors | length)],
+                    'icon': 'mdi:baby-carriage' if fam else 'mdi:baby-face-outline'
+                  }] %}
+                {% endfor %}
+                {{ ns.items }}
 
   # ─── Enfants ───────────────────────────────────────────────────
   - title: Enfants
@@ -720,117 +868,9 @@ views:
                               action: more-info
                               entity: this.entity_id
 
-  # ─── Planning ──────────────────────────────────────────────────
-  - title: Planning
-    path: planning
-    icon: mdi:calendar-week
-    type: sections
-    max_columns: 1
-    sections:
-      - type: grid
-        cards:
-          - type: heading
-            heading: Semaine à venir
-            heading_style: title
-            icon: mdi:view-week-outline
-          - type: custom:auto-entities
-            show_empty: false
-            unique: entity_id
-            card:
-              type: custom:week-planner-card
-              days: 7
-              startingDay: today
-              locale: fr
-              timeFormat: HH:mm
-              showNavigation: true
-              showLegend: true
-              legendToggle: true
-              combineSimilarEvents: true
-              noCardBackground: true
-              eventBackground: color-mix(in srgb, #0d9488 18%, var(--ha-card-background, var(--card-background-color)))
-              dayFormat: '''<span class="number">''d''</span><span class="month">''ccc''</span>'''
-              texts:
-                noEvents: Aucun créneau
-                fullDay: Journée entière
-                today: Aujourd’hui
-                tomorrow: Demain
-                yesterday: Hier
-                moreEvents: Plus de créneaux
-              card_mod:
-                style: |
-                  ha-card {
-                    border-radius: 24px;
-                    border: none;
-                    box-shadow: none;
-                    background: transparent;
-                    padding: 0;
-                  }
-                  .day {
-                    border-radius: 18px;
-                    background: color-mix(in srgb, var(--primary-color) 7%, var(--ha-card-background, var(--card-background-color)));
-                    padding: 10px 8px 12px;
-                  }
-                  .day.today {
-                    box-sizing: border-box;
-                    background: color-mix(in srgb, #0d9488 20%, var(--ha-card-background, var(--card-background-color)));
-                    box-shadow: inset 0 0 0 2px #0d9488;
-                  }
-                  .day.saturday,
-                  .day.sunday {
-                    opacity: 0.88;
-                  }
-                  .event {
-                    border-radius: 10px;
-                    border: none;
-                  }
-                  .event.past {
-                    opacity: 0.45;
-                  }
-                  .number {
-                    display: block;
-                    font-size: 1.55rem;
-                    font-weight: 750;
-                    letter-spacing: -0.02em;
-                    line-height: 1.1;
-                  }
-                  .month {
-                    display: block;
-                    font-size: 0.68rem;
-                    letter-spacing: 0.08em;
-                    text-transform: uppercase;
-                    opacity: 0.65;
-                    font-weight: 600;
-                    margin-bottom: 4px;
-                  }
-            card_param: calendars
-            filter:
-              template: >
-                {% set colors = ['#0d9488', '#0284c7', '#d97706', '#7c3aed', '#db2777', '#059669'] %}
-                {% set fam = states.calendar
-                  | selectattr('attributes', 'contains', 'optifamily_kind')
-                  | selectattr('attributes.optifamily_kind', 'eq', 'planning_family')
-                  | list %}
-                {% set kids = states.calendar
-                  | selectattr('attributes', 'contains', 'optifamily_kind')
-                  | selectattr('attributes.optifamily_kind', 'eq', 'planning')
-                  | list %}
-                {% set src = fam if fam else kids %}
-                {% set ns = namespace(items=[]) %}
-                {% for c in src %}
-                  {% set name = state_attr(c.entity_id, 'friendly_name')
-                    or c.attributes.friendly_name
-                    or c.name
-                    or 'OptiFamily' %}
-                  {% set ns.items = ns.items + [{
-                    'entity': c.entity_id,
-                    'name': name,
-                    'color': colors[loop.index0 % (colors | length)],
-                    'icon': 'mdi:baby-carriage' if fam else 'mdi:baby-face-outline'
-                  }] %}
-                {% endfor %}
-                {{ ns.items }}
-
   # ─── Calendrier ────────────────────────────────────────────────
+  # calendar exige des entity_id string ; auto-entities les wrap en {entity:…}
+  # → carte complète via card_param: cards + card_mod pour remplir le panel.
   - title: Calendrier
     path: calendrier
     icon: mdi:calendar-month
@@ -838,11 +878,26 @@ views:
     cards:
       - type: custom:auto-entities
         show_empty: false
-        unique: entity_id
         card:
-          type: calendar
-          initial_view: dayGridMonth
-        card_param: entities
+          type: vertical-stack
+        card_param: cards
+        card_mod:
+          style: |
+            :host {
+              display: block;
+              height: 100%;
+            }
+            hui-vertical-stack-card {
+              height: 100%;
+            }
+            hui-vertical-stack-card #root {
+              height: 100%;
+              gap: 0;
+            }
+            hui-calendar-card {
+              height: 100%;
+              display: block;
+            }
         filter:
           template: >
             {% set fam = states.calendar
@@ -853,4 +908,12 @@ views:
               | selectattr('attributes', 'contains', 'optifamily_kind')
               | selectattr('attributes.optifamily_kind', 'eq', 'planning')
               | map(attribute='entity_id') | list %}
-            {{ fam if fam else kids }}
+            {% set src = fam if fam else kids %}
+            {{ [{
+              'type': 'calendar',
+              'initial_view': 'dayGridMonth',
+              'entities': src,
+              'card_mod': {
+                'style': 'ha-card { height: 100%; display: flex; flex-direction: column; box-sizing: border-box; } ha-full-calendar { flex: 1 1 auto; height: 100%; --calendar-height: calc(100vh - var(--header-height, 56px) - 24px); min-height: var(--calendar-height); }'
+              }
+            }] if src else [] }}

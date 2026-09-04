@@ -140,6 +140,7 @@ Après installation **HACS** (et un redémarrage), les blueprints sont copiés a
 | Transmissions du jour | Automation | Nouvelles transmissions (par enfant) |
 | Rappel crèche famille | Automation | Rappel matinal pour tous les enfants |
 | Rappel crèche matin | Automation | Rappel pour un enfant précis |
+| Rappel créneau | Automation | Déposer / chercher selon horaires (anticipation) |
 | Changement de présence | Automation | Notifie présent ↔ absent |
 | Bilan du soir | Automation | Résumé familial le soir |
 | Résumé famille | **Script** | Résumé à la demande (bouton / autre auto) |
@@ -163,16 +164,21 @@ Cartes Lovelace HACS à installer **à la main** (HACS → Frontend). L’intég
 | auto-entities | [lovelace-auto-entities](https://github.com/thomasloven/lovelace-auto-entities) |
 | week-planner-card | [week-planner-card](https://github.com/FamousWolf/week-planner-card) |
 
-Onglets : **Aujourd’hui**, **Enfants**, **Planning** (week-planner-card, 7 jours + navigation) et **Calendrier** (mois, mise en page panneau). Sans ces plugins, l’import affiche « custom element doesn’t exist ».
+Onglets : **Aujourd’hui** (week-planner-card compact, 7 jours), **Enfants** et **Calendrier** (mois, mise en page panneau). Sans ces plugins, l’import affiche « custom element doesn’t exist ».
 
 
 ### Package helpers (optionnel)
 
-`packages/optifamily_helpers.yaml` ajoute :
+`packages/optifamily_helpers.yaml` ajoute une couche **pilotée par les états** :
 
-- un **mode silencieux** (`input_boolean`)
-- un **capteur résumé texte**
-- un **script** d’envoi du résumé
+| Élément | Rôle |
+|---|---|
+| `sensor.optifamily_phase_journee` | Phase du jour : `maison` · `deposer` · `creche` · `chercher` · `rentre` |
+| `sensor.optifamily_resume_texte` | Résumé texte + détail (présents, messages, créneaux) |
+| `binary_sensor.optifamily_attention` | « on » si messages non lus ou phase déposer/chercher |
+| `input_boolean.optifamily_quiet_hours` | Mode silencieux (branchable sur les blueprints) |
+| `input_boolean.optifamily_quiet_auto` + horaires | Silencieux automatique soir → matin |
+| `script.optifamily_notify_resume` | Envoie le résumé (ignore si silencieux) |
 
 Activation typique dans `configuration.yaml` :
 
@@ -181,7 +187,9 @@ homeassistant:
   packages: !include_dir_named packages
 ```
 
-Puis copiez le fichier dans `config/packages/` et adaptez les entités.
+Puis copiez le fichier dans `config/packages/`. Aucun entity_id de crèche à adapter : découverte via `optifamily_kind`.
+
+Sur le tableau de bord, la rangée de raccourcis (silencieux / attention / résumé) n’apparaît que si le package est chargé.
 
 ### Exemple YAML : notification message non lu
 

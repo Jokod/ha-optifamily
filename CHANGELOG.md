@@ -7,6 +7,19 @@ et ce projet adhère au [Versionnement Sémantique](https://semver.org/lang/fr/)
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-09-04
+
+### Added
+- Package helpers : phase journée (`maison` / `deposer` / `creche` / `chercher` / `rentre`), capteur attention, silencieux planifié, scripts résumé / bascule
+- Blueprint **Rappel créneau** (déposer / chercher selon horaires, anticipation configurable)
+- Mode silencieux optionnel sur les blueprints notification / rappels / bilan / résumé
+- Tableau de bord : chip phase, raccourcis silencieux / attention / résumé, section transmissions (si > 0)
+
+### Changed
+- Tableaux de bord : `week-planner-card` compact déplacé sur **Aujourd’hui** (remplace l’aperçu markdown) ; vue Planning retirée (3 onglets)
+- Événements « Fermeture » : trait vertical rouge sur le planning semaine
+- Rappels famille / matin : variables blueprint corrigées (`trigger_variables` au lieu de `input.*` dans les templates)
+
 ## [1.0.4] - 2026-09-03
 
 ### Added

@@ -3,6 +3,7 @@ blueprint:
   description: >
     Envoie chaque soir un résumé : enfants présents aujourd'hui, messages non lus,
     transmissions du jour (via le capteur agrégé « Enfants »).
+    Respecte le mode silencieux optionnel (package helpers).
   domain: automation
   author: ha-optifamily
   homeassistant:
@@ -36,14 +37,31 @@ blueprint:
       default: true
       selector:
         boolean:
+    quiet_hours:
+      name: Mode silencieux (optionnel)
+      description: >
+        Si « on », aucune notification. Ex. input_boolean.optifamily_quiet_hours.
+      default:
+      selector:
+        entity:
+          filter:
+            - domain: input_boolean
     notify_action:
       name: Notification
       selector:
         action:
 
+trigger_variables:
+  quiet_entity: !input quiet_hours
+
 trigger:
   - platform: time
     at: !input bilan_time
+
+condition:
+  - condition: template
+    value_template: >
+      {{ quiet_entity in [none, '', 'none'] or not is_state(quiet_entity, 'on') }}
 
 action:
   - variables:
@@ -59,6 +77,8 @@ action:
       unread: "{{ states(messages_entity) | int(0) }}"
       has_activity: >
         {{ presents | length > 0 or unread > 0 or transmissions_total > 0 }}
+      phase: "{{ states('sensor.optifamily_phase_journee') }}"
+      phase_lib: "{{ state_attr('sensor.optifamily_phase_journee', 'libelle') }}"
   - condition: template
     value_template: "{{ (not only_activity) or has_activity }}"
   - variables:
@@ -73,6 +93,9 @@ action:
     data:
       title: "OptiFamily — Bilan du soir"
       message: >
+        {% if phase_lib and phase not in ['unknown', 'unavailable', none, ''] %}
+        Phase : {{ phase_lib }}.
+        {% endif %}
         Présents : {{ presents | join(', ') if presents else 'aucun' }}.
         Messages non lus : {{ unread }}.
         Transmissions : {{ transmissions_total }}.

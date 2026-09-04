@@ -1,0 +1,138 @@
+blueprint:
+  name: OptiFamily — Rappel créneau (déposer / chercher)
+  description: >
+    Notifie quand approche le dépôt ou la récupération, d’après les horaires
+    du capteur « Présent aujourd’hui ». Le déclencheur template ne se réarme
+    qu’au prochain créneau (pas de spam). Respecte le mode silencieux optionnel.
+  domain: automation
+  author: ha-optifamily
+  homeassistant:
+    min_version: 2025.9.0
+  input:
+    presence_sensor:
+      name: Capteur présence
+      description: Capteur OptiFamily « Présent aujourd’hui » de l’enfant
+      selector:
+        entity:
+          filter:
+            - domain: sensor
+              integration: optifamily
+    lead_minutes:
+      name: Anticipation (minutes)
+      description: Notifier autant de minutes avant le début ou la fin du créneau
+      default: 30
+      selector:
+        number:
+          min: 5
+          max: 120
+          unit_of_measurement: min
+          mode: slider
+    notify_drop:
+      name: Notifier le dépôt
+      default: true
+      selector:
+        boolean:
+    notify_pick:
+      name: Notifier la récupération
+      default: true
+      selector:
+        boolean:
+    quiet_hours:
+      name: Mode silencieux (optionnel)
+      description: >
+        Si cette entité est « on », aucune notification.
+        Ex. input_boolean.optifamily_quiet_hours (package helpers).
+        Laissez vide pour ignorer.
+      default:
+      selector:
+        entity:
+          filter:
+            - domain: input_boolean
+    notify_action:
+      name: Notification
+      selector:
+        action:
+
+trigger_variables:
+  presence_entity: !input presence_sensor
+  lead: !input lead_minutes
+  do_drop: !input notify_drop
+  do_pick: !input notify_pick
+  quiet_entity: !input quiet_hours
+
+trigger:
+  - platform: template
+    id: drop
+    value_template: >
+      {% if not do_drop or states(presence_entity) != 'présent' %}
+        false
+      {% else %}
+        {% set label = (state_attr(presence_entity, 'creneaux') or [state_attr(presence_entity, 'creneaux_libelle') or ''])[0] %}
+        {% set times = (label or '') | regex_findall('(\\d{1,2}):(\\d{2})') %}
+        {% if times | length < 2 %}
+          false
+        {% else %}
+          {% set start = today_at(times[0][0] ~ ':' ~ times[0][1]) %}
+          {% set to_start = ((as_timestamp(start) - as_timestamp(now())) / 60) | round(0, 'floor') | int %}
+          {{ to_start > 0 and to_start <= lead | int }}
+        {% endif %}
+      {% endif %}
+  - platform: template
+    id: pick
+    value_template: >
+      {% if not do_pick or states(presence_entity) != 'présent' %}
+        false
+      {% else %}
+        {% set label = (state_attr(presence_entity, 'creneaux') or [state_attr(presence_entity, 'creneaux_libelle') or ''])[0] %}
+        {% set times = (label or '') | regex_findall('(\\d{1,2}):(\\d{2})') %}
+        {% if times | length < 2 %}
+          false
+        {% else %}
+          {% set start = today_at(times[0][0] ~ ':' ~ times[0][1]) %}
+          {% set end = today_at(times[1][0] ~ ':' ~ times[1][1]) %}
+          {% set to_start = ((as_timestamp(start) - as_timestamp(now())) / 60) | round(0, 'floor') | int %}
+          {% set to_end = ((as_timestamp(end) - as_timestamp(now())) / 60) | round(0, 'floor') | int %}
+          {{ to_start <= 0 and to_end > 0 and to_end <= lead | int }}
+        {% endif %}
+      {% endif %}
+
+condition:
+  - condition: template
+    value_template: >
+      {{ quiet_entity in [none, '', 'none'] or not is_state(quiet_entity, 'on') }}
+
+action:
+  - variables:
+      enfant: "{{ state_attr(presence_entity, 'enfant_libelle') | default('Enfant') }}"
+      label: "{{ (state_attr(presence_entity, 'creneaux') or [state_attr(presence_entity, 'creneaux_libelle') or ''])[0] }}"
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: drop
+        sequence:
+          - action: !input notify_action
+            data:
+              title: "OptiFamily — Déposer {{ enfant }}"
+              message: >
+                {% set times = (label or '') | regex_findall('(\\d{1,2}):(\\d{2})') %}
+                {% if times | length >= 2 %}
+                  Départ prévu à {{ times[0][0] }}:{{ times[0][1] }} (dans ≤ {{ lead }} min).
+                {% else %}
+                  Il est bientôt l’heure de déposer {{ enfant }}.
+                {% endif %}
+      - conditions:
+          - condition: trigger
+            id: pick
+        sequence:
+          - action: !input notify_action
+            data:
+              title: "OptiFamily — Chercher {{ enfant }}"
+              message: >
+                {% set times = (label or '') | regex_findall('(\\d{1,2}):(\\d{2})') %}
+                {% if times | length >= 2 %}
+                  Récupération prévue à {{ times[1][0] }}:{{ times[1][1] }} (dans ≤ {{ lead }} min).
+                {% else %}
+                  Il est bientôt l’heure d’aller chercher {{ enfant }}.
+                {% endif %}
+
+mode: single

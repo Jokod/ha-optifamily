@@ -5,43 +5,228 @@
 #      homeassistant:
 #        packages: !include_dir_named packages
 # 2. Copiez ce fichier dans config/packages/optifamily_helpers.yaml
-# 3. Adaptez les entity_id ci-dessous à votre instance.
-# 4. Redémarrez Home Assistant.
+# 3. Redémarrez Home Assistant.
 #
-# Ne contient aucune donnée personnelle : uniquement des templates.
+# Découverte automatique via optifamily_kind — aucun entity_id de crèche en dur.
+# Ne contient aucune donnée personnelle : uniquement des templates et helpers.
 
+# ─── Helpers ─────────────────────────────────────────────────────
 input_boolean:
   optifamily_quiet_hours:
     name: OptiFamily — mode silencieux
     icon: mdi:bell-off-outline
     initial: false
 
+  optifamily_quiet_auto:
+    name: OptiFamily — silencieux automatique
+    icon: mdi:bell-sleep
+    initial: true
+
+input_datetime:
+  optifamily_quiet_start:
+    name: OptiFamily — début silencieux
+    has_date: false
+    has_time: true
+    icon: mdi:weather-night
+    initial: "21:00:00"
+
+  optifamily_quiet_end:
+    name: OptiFamily — fin silencieux
+    has_date: false
+    has_time: true
+    icon: mdi:weather-sunset-up
+    initial: "07:00:00"
+
+# ─── Capteurs template (pilotés par les états OptiFamily) ─────────
 template:
   - sensor:
+      # Phase famille : maison | deposer | creche | chercher | rentre | inconnu
+      - name: "OptiFamily phase journée"
+        unique_id: optifamily_phase_journee
+        icon: >
+          {% set p = this.state if this.state not in ['unknown', 'unavailable', none] else 'inconnu' %}
+          {% if p == 'deposer' %}mdi:car-child-seat
+          {% elif p == 'creche' %}mdi:baby-face-outline
+          {% elif p == 'chercher' %}mdi:clock-end
+          {% elif p == 'rentre' %}mdi:home-import-outline
+          {% elif p == 'maison' %}mdi:home-heart
+          {% else %}mdi:help-circle-outline
+          {% endif %}
+        state: >
+          {% set enfants_s = states.sensor
+            | selectattr('attributes', 'contains', 'optifamily_kind')
+            | selectattr('attributes.optifamily_kind', 'eq', 'enfants') | list %}
+          {% set liste = (enfants_s[0].attributes.liste if enfants_s else []) or [] %}
+          {% if liste | length == 0 %}inconnu
+          {% else %}
+            {% set presents = liste | selectattr('presence', 'equalto', 'présent') | list %}
+            {% if presents | length == 0 %}maison
+            {% else %}
+              {% set ns = namespace(drop=none, pick=none, mid=0, done=0) %}
+              {% for e in presents %}
+                {% set label = (e.creneaux[0] if e.creneaux else '') %}
+                {% set times = (label or '') | regex_findall('(\\d{1,2}):(\\d{2})') %}
+                {% if times | length >= 2 %}
+                  {% set start = today_at(times[0][0] ~ ':' ~ times[0][1]) %}
+                  {% set end = today_at(times[1][0] ~ ':' ~ times[1][1]) %}
+                  {% set to_start = ((as_timestamp(start) - as_timestamp(now())) / 60) | round(0, 'floor') | int %}
+                  {% set to_end = ((as_timestamp(end) - as_timestamp(now())) / 60) | round(0, 'floor') | int %}
+                  {% if to_start > 0 %}
+                    {% if ns.drop is none or to_start < ns.drop %}{% set ns.drop = to_start %}{% endif %}
+                  {% elif to_end > 0 %}
+                    {% set ns.mid = ns.mid + 1 %}
+                    {% if ns.pick is none or to_end < ns.pick %}{% set ns.pick = to_end %}{% endif %}
+                  {% else %}
+                    {% set ns.done = ns.done + 1 %}
+                  {% endif %}
+                {% else %}
+                  {% set ns.mid = ns.mid + 1 %}
+                {% endif %}
+              {% endfor %}
+              {% if ns.drop is not none %}deposer
+              {% elif ns.pick is not none and ns.pick <= 90 %}chercher
+              {% elif ns.mid > 0 %}creche
+              {% elif ns.done > 0 %}rentre
+              {% else %}creche
+              {% endif %}
+            {% endif %}
+          {% endif %}
+        attributes:
+          libelle: >
+            {% set p = this.state %}
+            {% if p == 'deposer' %}À déposer
+            {% elif p == 'creche' %}En crèche
+            {% elif p == 'chercher' %}À récupérer
+            {% elif p == 'rentre' %}Rentré·e
+            {% elif p == 'maison' %}À la maison
+            {% else %}Inconnu
+            {% endif %}
+          minutes: >
+            {% set enfants_s = states.sensor
+              | selectattr('attributes', 'contains', 'optifamily_kind')
+              | selectattr('attributes.optifamily_kind', 'eq', 'enfants') | list %}
+            {% set liste = (enfants_s[0].attributes.liste if enfants_s else []) or [] %}
+            {% set presents = liste | selectattr('presence', 'equalto', 'présent') | list %}
+            {% set ns = namespace(best=none) %}
+            {% for e in presents %}
+              {% set label = (e.creneaux[0] if e.creneaux else '') %}
+              {% set times = (label or '') | regex_findall('(\\d{1,2}):(\\d{2})') %}
+              {% if times | length >= 2 %}
+                {% set start = today_at(times[0][0] ~ ':' ~ times[0][1]) %}
+                {% set end = today_at(times[1][0] ~ ':' ~ times[1][1]) %}
+                {% set to_start = ((as_timestamp(start) - as_timestamp(now())) / 60) | round(0, 'floor') | int %}
+                {% set to_end = ((as_timestamp(end) - as_timestamp(now())) / 60) | round(0, 'floor') | int %}
+                {% if to_start > 0 and (ns.best is none or to_start < ns.best) %}
+                  {% set ns.best = to_start %}
+                {% elif to_start <= 0 and to_end > 0 and (ns.best is none or to_end < ns.best) %}
+                  {% set ns.best = to_end %}
+                {% endif %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.best if ns.best is not none else none }}
+          cible: >
+            {% set enfants_s = states.sensor
+              | selectattr('attributes', 'contains', 'optifamily_kind')
+              | selectattr('attributes.optifamily_kind', 'eq', 'enfants') | list %}
+            {% set liste = (enfants_s[0].attributes.liste if enfants_s else []) or [] %}
+            {% set presents = liste | selectattr('presence', 'equalto', 'présent') | list %}
+            {% set ns = namespace(name=none, mins=none) %}
+            {% for e in presents %}
+              {% set label = (e.creneaux[0] if e.creneaux else '') %}
+              {% set times = (label or '') | regex_findall('(\\d{1,2}):(\\d{2})') %}
+              {% if times | length >= 2 %}
+                {% set start = today_at(times[0][0] ~ ':' ~ times[0][1]) %}
+                {% set end = today_at(times[1][0] ~ ':' ~ times[1][1]) %}
+                {% set to_start = ((as_timestamp(start) - as_timestamp(now())) / 60) | round(0, 'floor') | int %}
+                {% set to_end = ((as_timestamp(end) - as_timestamp(now())) / 60) | round(0, 'floor') | int %}
+                {% if to_start > 0 and (ns.mins is none or to_start < ns.mins) %}
+                  {% set ns.name = e.libelle %}
+                  {% set ns.mins = to_start %}
+                {% elif to_start <= 0 and to_end > 0 and (ns.mins is none or to_end < ns.mins) %}
+                  {% set ns.name = e.libelle %}
+                  {% set ns.mins = to_end %}
+                {% endif %}
+              {% endif %}
+            {% endfor %}
+            {{ ns.name }}
+
       - name: "OptiFamily résumé texte"
         unique_id: optifamily_resume_texte
         icon: mdi:text-box-outline
         state: >
-          {% set enfants_s = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind') | selectattr('attributes.optifamily_kind', 'eq', 'enfants') | list %}
+          {% set phase = states('sensor.optifamily_phase_journee') %}
+          {% set lib = state_attr('sensor.optifamily_phase_journee', 'libelle') or phase %}
+          {% set enfants_s = states.sensor
+            | selectattr('attributes', 'contains', 'optifamily_kind')
+            | selectattr('attributes.optifamily_kind', 'eq', 'enfants') | list %}
           {% set liste = (enfants_s[0].attributes.liste if enfants_s else []) or [] %}
           {% set presents = liste | selectattr('presence', 'equalto', 'présent')
                                    | map(attribute='libelle') | list %}
-          {% set msg_c = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind') | selectattr('attributes.optifamily_kind', 'eq', 'messages_unread_creche') | list %}
-          {% set msg_m = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind') | selectattr('attributes.optifamily_kind', 'eq', 'messages_unread_me') | list %}
-          {{ presents | length }} présent(s) · {{ (msg_c[0].state if msg_c else 0) | int(0) }} msg crèche · {{ (msg_m[0].state if msg_m else 0) | int(0) }} msg moi
+          {% set msg_c = states.sensor
+            | selectattr('attributes', 'contains', 'optifamily_kind')
+            | selectattr('attributes.optifamily_kind', 'eq', 'messages_unread_creche') | list %}
+          {% set msg_m = states.sensor
+            | selectattr('attributes', 'contains', 'optifamily_kind')
+            | selectattr('attributes.optifamily_kind', 'eq', 'messages_unread_me') | list %}
+          {% set mc = (msg_c[0].state | int(0)) if msg_c else 0 %}
+          {% set mm = (msg_m[0].state | int(0)) if msg_m else 0 %}
+          {{ lib }} · {{ presents | length }} présent(s) · {{ mc }} msg crèche · {{ mm }} msg moi
         attributes:
           presents: >
-            {% set enfants_s = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind') | selectattr('attributes.optifamily_kind', 'eq', 'enfants') | list %}
+            {% set enfants_s = states.sensor
+              | selectattr('attributes', 'contains', 'optifamily_kind')
+              | selectattr('attributes.optifamily_kind', 'eq', 'enfants') | list %}
             {% set liste = (enfants_s[0].attributes.liste if enfants_s else []) or [] %}
             {{ liste | selectattr('presence', 'equalto', 'présent')
                      | map(attribute='libelle') | list }}
+          phase: "{{ states('sensor.optifamily_phase_journee') }}"
           detail: >
-            {% set enfants_s = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind') | selectattr('attributes.optifamily_kind', 'eq', 'enfants') | list %}
+            {% set phase = states('sensor.optifamily_phase_journee') %}
+            {% set lib = state_attr('sensor.optifamily_phase_journee', 'libelle') or '—' %}
+            {% set cible = state_attr('sensor.optifamily_phase_journee', 'cible') %}
+            {% set mins = state_attr('sensor.optifamily_phase_journee', 'minutes') %}
+            {% set enfants_s = states.sensor
+              | selectattr('attributes', 'contains', 'optifamily_kind')
+              | selectattr('attributes.optifamily_kind', 'eq', 'enfants') | list %}
             {% set liste = (enfants_s[0].attributes.liste if enfants_s else []) or [] %}
-            {% for e in liste -%}
-            {{ e.libelle }}: {{ e.presence }}{% if e.creneaux %} ({{ e.creneaux | join(', ') }}){% endif %}
-            {% endfor %}
+            {% set msg_c = states.sensor
+              | selectattr('attributes', 'contains', 'optifamily_kind')
+              | selectattr('attributes.optifamily_kind', 'eq', 'messages_unread_creche') | list %}
+            {% set mc = (msg_c[0].state | int(0)) if msg_c else 0 %}
+            Phase : {{ lib }}{% if cible %} ({{ cible }}{% if mins is not none and mins | int(-1) >= 0 %} · {{ mins }} min{% endif %}){% endif %}
 
+            {% for e in liste -%}
+            • {{ e.libelle }} — {{ e.presence }}{% if e.creneaux %} ({{ e.creneaux | join(', ') }}){% endif %}{% if e.transmissions %} · {{ e.transmissions }} transm.{% endif %}
+
+            {% endfor -%}
+            {% if mc > 0 %}Messages crèche non lus : {{ mc }}{% endif %}
+
+  - binary_sensor:
+      - name: "OptiFamily attention"
+        unique_id: optifamily_attention
+        icon: mdi:bell-badge-outline
+        device_class: problem
+        state: >
+          {% set msg = states.sensor
+            | selectattr('attributes', 'contains', 'optifamily_kind')
+            | selectattr('attributes.optifamily_kind', 'eq', 'messages_unread_creche') | list %}
+          {% set mc = (msg[0].state | int(0)) if msg else 0 %}
+          {% set phase = states('sensor.optifamily_phase_journee') %}
+          {{ mc > 0 or phase in ['deposer', 'chercher'] }}
+        attributes:
+          raison: >
+            {% set msg = states.sensor
+              | selectattr('attributes', 'contains', 'optifamily_kind')
+              | selectattr('attributes.optifamily_kind', 'eq', 'messages_unread_creche') | list %}
+            {% set mc = (msg[0].state | int(0)) if msg else 0 %}
+            {% set phase = states('sensor.optifamily_phase_journee') %}
+            {% set ns = namespace(parts=[]) %}
+            {% if mc > 0 %}{% set ns.parts = ns.parts + [mc ~ ' message(s)'] %}{% endif %}
+            {% if phase == 'deposer' %}{% set ns.parts = ns.parts + ['déposer'] %}{% endif %}
+            {% if phase == 'chercher' %}{% set ns.parts = ns.parts + ['récupérer'] %}{% endif %}
+            {{ ns.parts | join(' · ') if ns.parts else 'RAS' }}
+
+# ─── Scripts ─────────────────────────────────────────────────────
 script:
   optifamily_notify_resume:
     alias: OptiFamily — Envoyer le résumé
@@ -51,7 +236,57 @@ script:
       - condition: state
         entity_id: input_boolean.optifamily_quiet_hours
         state: "off"
-      - service: notify.persistent_notification
+      - variables:
+          titre: >
+            OptiFamily — {{ state_attr('sensor.optifamily_phase_journee', 'libelle')
+              | default(states('sensor.optifamily_phase_journee')) }}
+          corps: >
+            {{ state_attr('sensor.optifamily_resume_texte', 'detail')
+               or states('sensor.optifamily_resume_texte') }}
+      - action: notify.persistent_notification
         data:
-          title: OptiFamily
-          message: "{{ state_attr('sensor.optifamily_resume_texte', 'detail') }}"
+          title: "{{ titre }}"
+          message: "{{ corps }}"
+
+  optifamily_toggle_quiet:
+    alias: OptiFamily — Basculer mode silencieux
+    icon: mdi:bell-cog-outline
+    mode: single
+    sequence:
+      - action: input_boolean.toggle
+        target:
+          entity_id: input_boolean.optifamily_quiet_hours
+
+# ─── Automatisations (silencieux planifié) ────────────────────────
+automation:
+  - id: optifamily_quiet_hours_on
+    alias: OptiFamily — Activer silencieux (horaire)
+    description: Active le mode silencieux à l’heure configurée (si auto activé).
+    mode: single
+    trigger:
+      - platform: time
+        at: input_datetime.optifamily_quiet_start
+    condition:
+      - condition: state
+        entity_id: input_boolean.optifamily_quiet_auto
+        state: "on"
+    action:
+      - action: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.optifamily_quiet_hours
+
+  - id: optifamily_quiet_hours_off
+    alias: OptiFamily — Désactiver silencieux (horaire)
+    description: Coupe le mode silencieux à l’heure configurée (si auto activé).
+    mode: single
+    trigger:
+      - platform: time
+        at: input_datetime.optifamily_quiet_end
+    condition:
+      - condition: state
+        entity_id: input_boolean.optifamily_quiet_auto
+        state: "on"
+    action:
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.optifamily_quiet_hours

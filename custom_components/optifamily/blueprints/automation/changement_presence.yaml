@@ -3,6 +3,7 @@ blueprint:
   description: >
     Notifie dès que le capteur « Présent aujourd'hui » passe de absent→présent
     ou présent→absent. Utile le matin ou en cas de fermeture imprévue.
+    Respecte le mode silencieux optionnel (package helpers).
   domain: automation
   author: ha-optifamily
   homeassistant:
@@ -15,6 +16,15 @@ blueprint:
           filter:
             - domain: sensor
               integration: optifamily
+    quiet_hours:
+      name: Mode silencieux (optionnel)
+      description: >
+        Si « on », aucune notification. Ex. input_boolean.optifamily_quiet_hours.
+      default:
+      selector:
+        entity:
+          filter:
+            - domain: input_boolean
     notify_action:
       name: Notification
       selector:
@@ -30,6 +40,9 @@ blueprint:
       selector:
         boolean:
 
+trigger_variables:
+  quiet_entity: !input quiet_hours
+
 trigger:
   - platform: state
     entity_id: !input presence_sensor
@@ -42,6 +55,9 @@ condition:
     value_template: >
       {{ trigger.from_state.state not in ['unknown', 'unavailable', none]
          and trigger.to_state.state != trigger.from_state.state }}
+  - condition: template
+    value_template: >
+      {{ quiet_entity in [none, '', 'none'] or not is_state(quiet_entity, 'on') }}
 
 action:
   - variables:

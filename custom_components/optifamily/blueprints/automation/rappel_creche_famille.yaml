@@ -3,6 +3,7 @@ blueprint:
   description: >
     Envoie une notification le matin si au moins un enfant est prévu en crèche.
     Adapté aux familles avec un ou plusieurs enfants.
+    Respecte le mode silencieux optionnel (package helpers).
   domain: automation
   author: ha-optifamily
   homeassistant:
@@ -21,6 +22,15 @@ blueprint:
       default: "07:30:00"
       selector:
         time:
+    quiet_hours:
+      name: Mode silencieux (optionnel)
+      description: >
+        Si « on », aucune notification. Ex. input_boolean.optifamily_quiet_hours.
+      default:
+      selector:
+        entity:
+          filter:
+            - domain: input_boolean
     notify_action:
       name: Action de notification
       description: >
@@ -28,6 +38,10 @@ blueprint:
         (ex. notify.mobile_app_mon_telephone).
       selector:
         action:
+
+trigger_variables:
+  presents_entity: !input enfants_presents_sensor
+  quiet_entity: !input quiet_hours
 
 trigger:
   - platform: time
@@ -37,11 +51,14 @@ condition:
   - condition: numeric_state
     entity_id: !input enfants_presents_sensor
     above: 0
+  - condition: template
+    value_template: >
+      {{ quiet_entity in [none, '', 'none'] or not is_state(quiet_entity, 'on') }}
 
 action:
   - variables:
-      noms: "{{ state_attr(input.enfants_presents_sensor, 'noms') | default([]) }}"
-      liste: "{{ state_attr(input.enfants_presents_sensor, 'liste') | default([]) }}"
+      noms: "{{ state_attr(presents_entity, 'noms') | default([]) }}"
+      liste: "{{ state_attr(presents_entity, 'liste') | default([]) }}"
       details: >
         {% for e in liste if e.presence == 'présent' %}
         - {{ e.libelle }} : {{ e.creneaux | join(', ') if e.creneaux else 'horaires non disponibles' }}
@@ -50,7 +67,7 @@ action:
     data:
       title: "Crèche aujourd'hui"
       message: >
-        {{ states(input.enfants_presents_sensor) | int }} enfant(s) en crèche :
+        {{ states(presents_entity) | int }} enfant(s) en crèche :
         {{ noms | join(', ') }}.
         {{ details }}
 

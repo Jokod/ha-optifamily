@@ -95,8 +95,9 @@ Décrivez :
 | `strings.json` / `translations/` | Internationalisation |
 | `blueprints.py` | Copie des blueprints vers `config/blueprints` au setup |
 | `blueprints/automation/` | YAML d'automatisation (emballés dans le composant HACS) |
-| `dashboards/optifamily.fr.yaml` | Lovelace 4 vues (FR) — Mushroom, card-mod, auto-entities, week-planner-card |
+| `dashboards/optifamily.fr.yaml` | Lovelace 3 vues (FR) — Mushroom, card-mod, auto-entities, week-planner-card |
 | `dashboards/optifamily.en.yaml` | Same layout (EN) |
+| `packages/optifamily_helpers.yaml` | Helpers optionnels (phase, silencieux, résumé) |
 
 ### Règles de sécurité (obligatoires)
 

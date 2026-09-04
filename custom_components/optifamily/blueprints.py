@@ -26,6 +26,7 @@ _SHIPPED: dict[str, frozenset[str]] = {
             "nouvelle_photo.yaml",
             "rappel_creche_famille.yaml",
             "rappel_creche_matin.yaml",
+            "rappel_creneau.yaml",
             "transmissions_du_jour.yaml",
         }
     ),
