@@ -15,6 +15,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import CONF_CRECHE_NAME, DOMAIN
 from .coordinator import OptieFamilyCoordinator
+from .devices import async_get_or_create_hub_device_id
 from .models import Enfant, iter_year_months, planning_to_events
 from .sensor import _get_enfants
 
@@ -28,25 +29,27 @@ async def async_setup_entry(
 ) -> None:
     """Configure un calendrier par enfant."""
     coordinator: OptieFamilyCoordinator = entry.runtime_data
+    via_device_id = async_get_or_create_hub_device_id(hass, entry)
     entities: list[CalendarEntity] = [
         OptieFamilyFamilyCalendar(coordinator, entry),
     ]
     for enfant in _get_enfants(coordinator, entry):
         coordinator.known_calendar_enfant_ids.add(enfant.id)
-        entities.append(OptieFamilyChildCalendar(coordinator, entry, enfant))
+        entities.append(OptieFamilyChildCalendar(coordinator, entry, enfant, via_device_id))
     async_add_entities(entities)
 
     @callback
     def _handle_coordinator_update() -> None:
         if not coordinator.data:
             return
+        hub_id = async_get_or_create_hub_device_id(hass, entry)
         new_entities: list[OptieFamilyChildCalendar] = []
         for enfant in _get_enfants(coordinator, entry):
             if enfant.id in coordinator.known_calendar_enfant_ids:
                 continue
             coordinator.known_calendar_enfant_ids.add(enfant.id)
             _LOGGER.info("Ajout du calendrier pour l'enfant %s (%s)", enfant.libelle, enfant.id)
-            new_entities.append(OptieFamilyChildCalendar(coordinator, entry, enfant))
+            new_entities.append(OptieFamilyChildCalendar(coordinator, entry, enfant, hub_id))
         if new_entities:
             async_add_entities(new_entities)
 
@@ -143,10 +146,12 @@ class OptieFamilyChildCalendar(CoordinatorEntity[OptieFamilyCoordinator], Calend
         coordinator: OptieFamilyCoordinator,
         entry: ConfigEntry,
         enfant: Enfant,
+        via_device_id: str,
     ) -> None:
         super().__init__(coordinator)
         self._entry = entry
         self._enfant = enfant
+        self._via_device_id = via_device_id
         self._attr_unique_id = f"{entry.entry_id}_{enfant.id}_planning_calendar"
 
     @property
@@ -156,7 +161,7 @@ class OptieFamilyChildCalendar(CoordinatorEntity[OptieFamilyCoordinator], Calend
             name=self._enfant.libelle,
             manufacturer="OptiCrèche",
             model="OptiFamily - Enfant",
-            via_device=(DOMAIN, self._entry.entry_id),
+            via_device_id=self._via_device_id,
         )
 
     @property

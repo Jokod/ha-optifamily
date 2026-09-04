@@ -33,6 +33,7 @@ def _ensure_ha_stubs() -> None:
         "homeassistant.helpers.entity_platform",
         "homeassistant.helpers.selector",
         "homeassistant.helpers.typing",
+        "homeassistant.helpers.device_registry",
         "homeassistant.components",
         "homeassistant.components.sensor",
         "homeassistant.components.calendar",
@@ -237,6 +238,22 @@ def _ensure_ha_stubs() -> None:
     # aiohttp_client
     sys.modules["homeassistant.helpers.aiohttp_client"].async_get_clientsession = MagicMock()
 
+    # device_registry
+    dr_mod = sys.modules["homeassistant.helpers.device_registry"]
+
+    class _DeviceEntry:
+        def __init__(self, device_id: str = "hub-device-id") -> None:
+            self.id = device_id
+
+    class _DeviceRegistry:
+        def async_get_or_create(self, **kwargs: Any) -> _DeviceEntry:
+            return _DeviceEntry()
+
+    def _async_get_registry(_hass: Any) -> _DeviceRegistry:
+        return _DeviceRegistry()
+
+    dr_mod.async_get = _async_get_registry
+
     # homeassistant root
     ha = sys.modules["homeassistant"]
     ha.config_entries = ce
@@ -279,7 +296,7 @@ from custom_components.optifamily.api import OptieFamilyApiClient  # noqa: E402
 
 @pytest.fixture
 def today() -> date:
-    return date(2026, 9, 3)
+    return date.today()
 
 
 @pytest.fixture

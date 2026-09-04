@@ -93,10 +93,11 @@ async def test_calendar_setup_and_events(
     assert family2.device_info["name"] == "OptiFamily"
 
     empty_child = calendar_mod.OptieFamilyChildCalendar(
-        coordinator, entry2, Enfant(id=9, libelle="Z")
+        coordinator, entry2, Enfant(id=9, libelle="Z"), "hub-device-id"
     )
     assert empty_child.event is None
     assert empty_child.device_info["name"] == "Z"
+    assert empty_child.device_info["via_device_id"] == "hub-device-id"
     assert calendar_mod._event_end(type("E", (), {"end": date(2026, 1, 2)})()).day == 2
     assert (
         calendar_mod._event_start(

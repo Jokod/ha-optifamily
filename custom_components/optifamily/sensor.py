@@ -22,6 +22,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import CONF_CRECHE_NAME, CONF_ENFANTS, DOMAIN
 from .coordinator import OptieFamilyCoordinator, OptieFamilyData
+from .devices import async_get_or_create_hub_device_id
 from .models import (
     Enfant,
     build_enfants_summary,
@@ -140,6 +141,7 @@ async def async_setup_entry(
 ) -> None:
     """Configure tous les capteurs au démarrage."""
     coordinator: OptieFamilyCoordinator = entry.runtime_data
+    via_device_id = async_get_or_create_hub_device_id(hass, entry)
 
     entities: list[SensorEntity] = []
 
@@ -150,7 +152,7 @@ async def async_setup_entry(
 
     for enfant in _get_enfants(coordinator, entry):
         coordinator.known_enfant_ids.add(enfant.id)
-        entities.extend(_build_child_sensors(coordinator, entry, enfant))
+        entities.extend(_build_child_sensors(coordinator, entry, enfant, via_device_id))
 
     async_add_entities(entities)
 
@@ -159,13 +161,14 @@ async def async_setup_entry(
         """Ajoute dynamiquement les capteurs des nouveaux enfants."""
         if not coordinator.data:
             return
+        hub_id = async_get_or_create_hub_device_id(hass, entry)
         new_entities: list[SensorEntity] = []
         for enfant in _get_enfants(coordinator, entry):
             if enfant.id in coordinator.known_enfant_ids:
                 continue
             coordinator.known_enfant_ids.add(enfant.id)
             _LOGGER.info("Ajout des capteurs pour l'enfant %s (%s)", enfant.libelle, enfant.id)
-            new_entities.extend(_build_child_sensors(coordinator, entry, enfant))
+            new_entities.extend(_build_child_sensors(coordinator, entry, enfant, hub_id))
         if new_entities:
             async_add_entities(new_entities)
 
@@ -176,13 +179,14 @@ def _build_child_sensors(
     coordinator: OptieFamilyCoordinator,
     entry: ConfigEntry,
     enfant: Enfant,
+    via_device_id: str,
 ) -> list[SensorEntity]:
     """Crée les capteurs pour un enfant donné."""
     return [
-        OptieFamilyChildPresentSensor(coordinator, entry, enfant),
-        OptieFamilyChildPlanningSlotsSensor(coordinator, entry, enfant),
-        OptieFamilyChildTransmissionsSensor(coordinator, entry, enfant),
-        OptieFamilyChildAlbumsSensor(coordinator, entry, enfant),
+        OptieFamilyChildPresentSensor(coordinator, entry, enfant, via_device_id),
+        OptieFamilyChildPlanningSlotsSensor(coordinator, entry, enfant, via_device_id),
+        OptieFamilyChildTransmissionsSensor(coordinator, entry, enfant, via_device_id),
+        OptieFamilyChildAlbumsSensor(coordinator, entry, enfant, via_device_id),
     ]
 
 
@@ -273,9 +277,11 @@ class _ChildSensor(_OptieFamilyBaseSensor):
         entry: ConfigEntry,
         enfant: Enfant,
         sensor_key: str,
+        via_device_id: str,
     ) -> None:
         super().__init__(coordinator, entry)
         self._enfant = enfant
+        self._via_device_id = via_device_id
         self._attr_unique_id = f"{entry.entry_id}_{enfant.id}_{sensor_key}"
 
     @property
@@ -285,7 +291,7 @@ class _ChildSensor(_OptieFamilyBaseSensor):
             name=self._enfant.libelle,
             manufacturer="OptiCrèche",
             model="OptiFamily - Enfant",
-            via_device=(DOMAIN, self._entry.entry_id),
+            via_device_id=self._via_device_id,
         )
 
 
@@ -297,8 +303,14 @@ class OptieFamilyChildPresentSensor(_ChildSensor):
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options: ClassVar[list[str]] = ["présent", "absent", "inconnu"]
 
-    def __init__(self, coordinator, entry, enfant: Enfant):
-        super().__init__(coordinator, entry, enfant, "present")
+    def __init__(
+        self,
+        coordinator: OptieFamilyCoordinator,
+        entry: ConfigEntry,
+        enfant: Enfant,
+        via_device_id: str,
+    ) -> None:
+        super().__init__(coordinator, entry, enfant, "present", via_device_id)
 
     @property
     def native_value(self) -> str:
@@ -333,8 +345,14 @@ class OptieFamilyChildPlanningSlotsSensor(_ChildSensor):
     _attr_icon = "mdi:calendar-month"
     _attr_state_class = SensorStateClass.MEASUREMENT
 
-    def __init__(self, coordinator, entry, enfant: Enfant):
-        super().__init__(coordinator, entry, enfant, "planning_slots")
+    def __init__(
+        self,
+        coordinator: OptieFamilyCoordinator,
+        entry: ConfigEntry,
+        enfant: Enfant,
+        via_device_id: str,
+    ) -> None:
+        super().__init__(coordinator, entry, enfant, "planning_slots", via_device_id)
 
     @property
     def native_value(self) -> int:
@@ -376,8 +394,14 @@ class OptieFamilyChildTransmissionsSensor(_ChildSensor):
     _attr_icon = "mdi:clipboard-text-outline"
     _attr_state_class = SensorStateClass.MEASUREMENT
 
-    def __init__(self, coordinator, entry, enfant: Enfant):
-        super().__init__(coordinator, entry, enfant, "transmissions")
+    def __init__(
+        self,
+        coordinator: OptieFamilyCoordinator,
+        entry: ConfigEntry,
+        enfant: Enfant,
+        via_device_id: str,
+    ) -> None:
+        super().__init__(coordinator, entry, enfant, "transmissions", via_device_id)
 
     @property
     def native_value(self) -> int:
@@ -400,8 +424,14 @@ class OptieFamilyChildAlbumsSensor(_ChildSensor):
     _attr_icon = "mdi:image-multiple-outline"
     _attr_state_class = SensorStateClass.MEASUREMENT
 
-    def __init__(self, coordinator, entry, enfant: Enfant):
-        super().__init__(coordinator, entry, enfant, "albums")
+    def __init__(
+        self,
+        coordinator: OptieFamilyCoordinator,
+        entry: ConfigEntry,
+        enfant: Enfant,
+        via_device_id: str,
+    ) -> None:
+        super().__init__(coordinator, entry, enfant, "albums", via_device_id)
 
     @property
     def native_value(self) -> int:

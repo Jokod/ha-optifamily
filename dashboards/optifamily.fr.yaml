@@ -184,9 +184,11 @@ views:
         cards:
           - type: conditional
             conditions:
-              - condition: template
-                value_template: >
-                  {{ states('input_boolean.optifamily_quiet_hours') not in ['unknown', 'unavailable'] }}
+              - condition: state
+                entity: input_boolean.optifamily_quiet_hours
+                state_not:
+                  - unavailable
+                  - unknown
             card:
               type: custom:mushroom-chips-card
               alignment: center

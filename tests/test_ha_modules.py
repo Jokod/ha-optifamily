@@ -536,9 +536,10 @@ async def test_sensors(planning_present: dict, today: date, hass: MagicMock) -> 
         sensor_mod.OptieFamilyChildTransmissionsSensor,
         sensor_mod.OptieFamilyChildAlbumsSensor,
     ):
-        s = cls(coordinator, entry, enfant)
+        s = cls(coordinator, entry, enfant, "hub-device-id")
         _ = s.native_value
         _ = s.extra_state_attributes
+        assert s.device_info["via_device_id"] == "hub-device-id"
 
     entry2 = MagicMock()
     entry2.entry_id = "e2"

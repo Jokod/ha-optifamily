@@ -7,6 +7,12 @@ et ce projet adhère au [Versionnement Sémantique](https://semver.org/lang/fr/)
 
 ## [Unreleased]
 
+## [1.0.6] - 2026-09-04
+
+### Fixed
+- Appareils enfants : `via_device` remplacé par `via_device_id` (dépréciation HA, retrait en 2027.8)
+- Tableau de bord : condition Lovelace des raccourcis package — `state` à la place de `template` (non supporté)
+
 ## [1.0.5] - 2026-09-04
 
 ### Added
