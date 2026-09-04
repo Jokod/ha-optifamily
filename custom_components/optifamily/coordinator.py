@@ -19,6 +19,12 @@ from .const import (
     CONF_CRECHE_ID,
     CONF_CRECHE_NAME,
     CONF_ENFANTS,
+    CONF_PAUSE_UPDATES,
+    CONF_PAUSE_UPDATES_END,
+    CONF_PAUSE_UPDATES_START,
+    DEFAULT_PAUSE_UPDATES,
+    DEFAULT_PAUSE_UPDATES_END,
+    DEFAULT_PAUSE_UPDATES_START,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     PLANNING_CACHE_TTL,
@@ -26,6 +32,7 @@ from .const import (
     STORAGE_KEY_PREFIX,
     STORAGE_VERSION,
     clamp_scan_interval,
+    is_update_paused,
 )
 from .exceptions import (
     OptieFamilyApiError,
@@ -35,6 +42,23 @@ from .exceptions import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _famille_id_from_me(me: dict[str, Any] | None) -> int | None:
+    """Extrait l'identifiant famille / utilisateur depuis `/me`."""
+    if not me:
+        return None
+    for key in ("familleId", "famille_id", "idFamille", "id"):
+        raw = me.get(key)
+        if raw is None and isinstance(me.get("famille"), dict):
+            raw = me["famille"].get("id")
+        if raw is None:
+            continue
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            continue
+    return None
 
 
 class _PlanningCacheEntry:
@@ -59,6 +83,8 @@ class OptieFamilyData:
         "actualites",
         "albums",
         "documents",
+        "documents_enfant",
+        "documents_famille",
         "enfants",
         "facturation",
         "me",
@@ -77,6 +103,8 @@ class OptieFamilyData:
         self.actualites: dict[str, Any] = {}
         self.messages: list[dict[str, Any]] = []
         self.documents: list[dict[str, Any]] = []
+        self.documents_famille: list[dict[str, Any]] = []
+        self.documents_enfant: dict[int, list[dict[str, Any]]] = {}
         self.facturation: list[dict[str, Any]] = []
         self.persisted_enfants: list[dict[str, Any]] = []
 
@@ -107,6 +135,8 @@ class OptieFamilyCoordinator(DataUpdateCoordinator[OptieFamilyData]):
         self.known_calendar_enfant_ids: set[int] = set()
         self._planning_cache: dict[tuple[int, int, int], _PlanningCacheEntry] = {}
         self._planning_inflight: dict[tuple[int, int, int], asyncio.Task[dict[str, Any]]] = {}
+        self.transmissions_view_date: date = date.today()
+        self.transmissions_journal: dict[int, list[dict[str, Any]]] = {}
         _LOGGER.debug("Intervalle de rafraîchissement OptiFamily : %ss", scan_interval)
         self._store: Store = Store(
             hass,
@@ -205,6 +235,14 @@ class OptieFamilyCoordinator(DataUpdateCoordinator[OptieFamilyData]):
 
     async def _async_update_data(self) -> OptieFamilyData:
         """Méthode appelée automatiquement par HA toutes les N secondes."""
+        if self.data is not None and self._is_in_pause_window():
+            _LOGGER.debug(
+                "Pause de mise à jour OptiFamily (%s → %s)",
+                self.entry.options.get(CONF_PAUSE_UPDATES_START, DEFAULT_PAUSE_UPDATES_START),
+                self.entry.options.get(CONF_PAUSE_UPDATES_END, DEFAULT_PAUSE_UPDATES_END),
+            )
+            return self.data
+
         result = OptieFamilyData()
         result.persisted_enfants = list(self.entry.data.get(CONF_ENFANTS, []))
         today = date.today()
@@ -245,6 +283,22 @@ class OptieFamilyCoordinator(DataUpdateCoordinator[OptieFamilyData]):
             result.actualites = await self.client.get_actualites(0, 20)
             result.messages = await self.client.get_messages()
             result.documents = await self.client.get_documents()
+            famille_id = _famille_id_from_me(result.me)
+            if famille_id is not None:
+                try:
+                    result.documents_famille = await self.client.get_documents_famille(famille_id)
+                except Exception as err:
+                    _LOGGER.warning("Impossible de récupérer les documents famille : %s", err)
+            for enfant in result.enfants:
+                eid = enfant["id"]
+                try:
+                    result.documents_enfant[eid] = await self.client.get_documents_enfant(eid)
+                except Exception as err:
+                    _LOGGER.warning(
+                        "Impossible de récupérer les documents de l'enfant %s : %s",
+                        eid,
+                        err,
+                    )
             result.facturation = await self.client.get_facturation()
 
         except OptieFamilyAuthError as err:
@@ -265,7 +319,63 @@ class OptieFamilyCoordinator(DataUpdateCoordinator[OptieFamilyData]):
             )
 
         self.last_sync_at = datetime.now(UTC)
+        if self.transmissions_view_date == today:
+            self.transmissions_journal = {
+                eid: list(items) for eid, items in result.transmissions.items()
+            }
         return result
+
+    def _is_in_pause_window(self) -> bool:
+        """Fenêtre nocturne configurable (défaut 21h-6h, heure locale HA)."""
+        options = self.entry.options
+        enabled = options.get(CONF_PAUSE_UPDATES, DEFAULT_PAUSE_UPDATES)
+        if isinstance(enabled, str):
+            enabled = enabled.lower() in {"1", "true", "on", "yes"}
+        now = datetime.now().astimezone()
+        try:
+            from homeassistant.util import dt as dt_util
+
+            now = dt_util.now()
+        except ImportError:
+            pass
+        return is_update_paused(
+            now.hour * 3600 + now.minute * 60 + now.second,
+            enabled=bool(enabled),
+            start=options.get(CONF_PAUSE_UPDATES_START, DEFAULT_PAUSE_UPDATES_START),
+            end=options.get(CONF_PAUSE_UPDATES_END, DEFAULT_PAUSE_UPDATES_END),
+        )
+
+    async def async_set_transmissions_view_date(self, day: date) -> date:
+        """Charge le journal des transmissions pour une date (navigation dashboard)."""
+        self.transmissions_view_date = day
+        journal: dict[int, list[dict[str, Any]]] = {}
+        enfants = list((self.data.enfants if self.data else None) or [])
+        if not enfants:
+            enfants = list(self.entry.data.get(CONF_ENFANTS, []))
+        for raw in enfants:
+            try:
+                eid = int(raw["id"])
+            except (TypeError, ValueError, KeyError):
+                continue
+            try:
+                journal[eid] = await self.client.get_transmissions(eid, day)
+            except Exception as err:
+                _LOGGER.warning(
+                    "Impossible de récupérer les transmissions %s pour %s : %s",
+                    day.isoformat(),
+                    eid,
+                    err,
+                )
+                journal[eid] = []
+        self.transmissions_journal = journal
+        self.async_update_listeners()
+        return day
+
+    async def async_shift_transmissions_view_date(self, days: int) -> date:
+        """Décale la date du journal (+1 / -1)."""
+        return await self.async_set_transmissions_view_date(
+            self.transmissions_view_date + timedelta(days=days)
+        )
 
     async def async_get_planning_month(
         self, enfant_id: int, year: int, month: int

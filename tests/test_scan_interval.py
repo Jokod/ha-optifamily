@@ -44,6 +44,26 @@ def test_scan_interval_from_minutes() -> None:
     assert scan_interval_from_minutes("x") == DEFAULT_SCAN_INTERVAL
 
 
+def test_is_update_paused_overnight_default() -> None:
+    from custom_components.optifamily.const import is_update_paused
+
+    # 21:00 → 06:00
+    assert is_update_paused(21 * 3600, enabled=True, start="21:00:00", end="06:00:00")
+    assert is_update_paused(23 * 3600, enabled=True, start="21:00:00", end="06:00:00")
+    assert is_update_paused(5 * 3600 + 59 * 60, enabled=True, start="21:00:00", end="06:00:00")
+    assert not is_update_paused(6 * 3600, enabled=True, start="21:00:00", end="06:00:00")
+    assert not is_update_paused(12 * 3600, enabled=True, start="21:00:00", end="06:00:00")
+    assert not is_update_paused(22 * 3600, enabled=False, start="21:00:00", end="06:00:00")
+
+
+def test_is_update_paused_same_day_window() -> None:
+    from custom_components.optifamily.const import is_update_paused
+
+    assert is_update_paused(13 * 3600, enabled=True, start="12:00:00", end="14:00:00")
+    assert not is_update_paused(11 * 3600, enabled=True, start="12:00:00", end="14:00:00")
+    assert not is_update_paused(14 * 3600, enabled=True, start="12:00:00", end="14:00:00")
+
+
 def test_last_refresh_sensor_exposes_timestamp_and_interval() -> None:
     when = datetime(2026, 9, 3, 17, 30, tzinfo=UTC)
     coordinator = SimpleNamespace(

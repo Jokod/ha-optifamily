@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import date
 import logging
 from typing import Any, ClassVar
 
@@ -31,6 +32,8 @@ from .models import (
     get_presence,
     get_today_creneaux,
     iter_enfants,
+    normalize_transmissions,
+    transmissions_markdown,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -115,7 +118,19 @@ GLOBAL_SENSORS: tuple[OptieFamilySensorDescription, ...] = (
         name="Documents",
         icon="mdi:file-document-outline",
         state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda d: len(d.documents),
+        value_fn=lambda d: (
+            len(d.documents)
+            + len(getattr(d, "documents_famille", None) or [])
+            + sum(len(v) for v in (getattr(d, "documents_enfant", None) or {}).values())
+        ),
+        attributes_fn=lambda d: {
+            "creche": len(d.documents),
+            "famille": len(getattr(d, "documents_famille", None) or []),
+            "enfants": {
+                str(eid): len(items)
+                for eid, items in (getattr(d, "documents_enfant", None) or {}).items()
+            },
+        },
     ),
     OptieFamilySensorDescription(
         key="facturation_total",
@@ -186,6 +201,7 @@ def _build_child_sensors(
         OptieFamilyChildPresentSensor(coordinator, entry, enfant, via_device_id),
         OptieFamilyChildPlanningSlotsSensor(coordinator, entry, enfant, via_device_id),
         OptieFamilyChildTransmissionsSensor(coordinator, entry, enfant, via_device_id),
+        OptieFamilyChildTransmissionsJournalSensor(coordinator, entry, enfant, via_device_id),
         OptieFamilyChildAlbumsSensor(coordinator, entry, enfant, via_device_id),
     ]
 
@@ -388,7 +404,7 @@ class OptieFamilyChildPlanningSlotsSensor(_ChildSensor):
 
 
 class OptieFamilyChildTransmissionsSensor(_ChildSensor):
-    """Nombre de transmissions du jour."""
+    """Nombre de transmissions du jour (+ détail)."""
 
     _attr_name = "Transmissions du jour"
     _attr_icon = "mdi:clipboard-text-outline"
@@ -409,11 +425,64 @@ class OptieFamilyChildTransmissionsSensor(_ChildSensor):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
+        raw = self.coordinator.data.transmissions.get(self._enfant.id, [])
+        items = normalize_transmissions(raw)
         return {
             "enfant_id": self._enfant.id,
             "enfant_libelle": self._enfant.libelle,
             "optifamily_kind": "transmissions",
-            "count": self.native_value,
+            "count": len(items),
+            "date": date.today().isoformat(),
+            "items": items,
+            "lignes": [i["ligne"] for i in items],
+            "markdown": transmissions_markdown(
+                raw, enfant_libelle=self._enfant.libelle, jour=date.today().isoformat()
+            ),
+        }
+
+
+class OptieFamilyChildTransmissionsJournalSensor(_ChildSensor):
+    """Journal des transmissions pour la date naviguée (services set/shift)."""
+
+    _attr_name = "Journal transmissions"
+    _attr_icon = "mdi:book-open-page-variant-outline"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(
+        self,
+        coordinator: OptieFamilyCoordinator,
+        entry: ConfigEntry,
+        enfant: Enfant,
+        via_device_id: str,
+    ) -> None:
+        super().__init__(coordinator, entry, enfant, "transmissions_journal", via_device_id)
+
+    @property
+    def native_value(self) -> int:
+        raw = self.coordinator.transmissions_journal.get(self._enfant.id)
+        if raw is None:
+            raw = self.coordinator.data.transmissions.get(self._enfant.id, [])
+        return len(raw or [])
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        day = self.coordinator.transmissions_view_date
+        raw = self.coordinator.transmissions_journal.get(self._enfant.id)
+        if raw is None and day == date.today():
+            raw = self.coordinator.data.transmissions.get(self._enfant.id, [])
+        raw = raw or []
+        items = normalize_transmissions(raw)
+        return {
+            "enfant_id": self._enfant.id,
+            "enfant_libelle": self._enfant.libelle,
+            "optifamily_kind": "transmissions_journal",
+            "date": day.isoformat(),
+            "count": len(items),
+            "items": items,
+            "lignes": [i["ligne"] for i in items],
+            "markdown": transmissions_markdown(
+                raw, enfant_libelle=self._enfant.libelle, jour=day.isoformat()
+            ),
         }
 
 

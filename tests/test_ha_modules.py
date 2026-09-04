@@ -287,6 +287,8 @@ async def test_coordinator_tokens_and_update(hass: MagicMock) -> None:
     client.get_actualites = AsyncMock(return_value={"total": 0})
     client.get_messages = AsyncMock(return_value=[])
     client.get_documents = AsyncMock(return_value=[])
+    client.get_documents_famille = AsyncMock(return_value=[])
+    client.get_documents_enfant = AsyncMock(return_value=[])
     client.get_facturation = AsyncMock(return_value=[])
 
     coord = OptieFamilyCoordinator(hass, client, entry)
@@ -379,6 +381,8 @@ async def test_coordinator_update_partial_and_failures(hass: MagicMock) -> None:
     client.get_actualites = AsyncMock(return_value={})
     client.get_messages = AsyncMock(return_value=[])
     client.get_documents = AsyncMock(return_value=[])
+    client.get_documents_famille = AsyncMock(return_value=[])
+    client.get_documents_enfant = AsyncMock(return_value=[])
     client.get_facturation = AsyncMock(return_value=[])
 
     coord = OptieFamilyCoordinator(hass, client, entry)
@@ -443,6 +447,8 @@ async def test_sensors(planning_present: dict, today: date, hass: MagicMock) -> 
     coordinator.known_enfant_ids = set()
     coordinator.scan_interval = 1800
     coordinator.last_sync_at = datetime(2026, 9, 3, tzinfo=UTC)
+    coordinator.transmissions_view_date = date.today()
+    coordinator.transmissions_journal = {}
     listeners: list[Any] = []
 
     def add_listener(cb: Any) -> Any:
@@ -534,6 +540,7 @@ async def test_sensors(planning_present: dict, today: date, hass: MagicMock) -> 
         sensor_mod.OptieFamilyChildPresentSensor,
         sensor_mod.OptieFamilyChildPlanningSlotsSensor,
         sensor_mod.OptieFamilyChildTransmissionsSensor,
+        sensor_mod.OptieFamilyChildTransmissionsJournalSensor,
         sensor_mod.OptieFamilyChildAlbumsSensor,
     ):
         s = cls(coordinator, entry, enfant, "hub-device-id")
@@ -683,6 +690,16 @@ async def test_config_flow_user_and_creche() -> None:
     options.config_entry = MagicMock(options={})
     form = await options.async_step_init(None)
     assert form["type"] == "form"
-    created = await options.async_step_init({"scan_interval_minutes": 30})
+    created = await options.async_step_init(
+        {
+            "scan_interval_minutes": 30,
+            "pause_updates": True,
+            "pause_updates_start": "21:00:00",
+            "pause_updates_end": "06:00:00",
+        }
+    )
     assert created["type"] == "create_entry"
     assert created["data"]["scan_interval"] == 1800
+    assert created["data"]["pause_updates"] is True
+    assert created["data"]["pause_updates_start"] == "21:00:00"
+    assert created["data"]["pause_updates_end"] == "06:00:00"

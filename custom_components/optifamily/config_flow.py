@@ -15,6 +15,7 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
+    BooleanSelector,
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
@@ -24,6 +25,7 @@ from homeassistant.helpers.selector import (
     TextSelector,
     TextSelectorConfig,
     TextSelectorType,
+    TimeSelector,
 )
 import voluptuous as vol
 
@@ -32,6 +34,12 @@ from .const import (
     CONF_CRECHE_ID,
     CONF_CRECHE_NAME,
     CONF_ENFANTS,
+    CONF_PAUSE_UPDATES,
+    CONF_PAUSE_UPDATES_END,
+    CONF_PAUSE_UPDATES_START,
+    DEFAULT_PAUSE_UPDATES,
+    DEFAULT_PAUSE_UPDATES_END,
+    DEFAULT_PAUSE_UPDATES_START,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     MAX_SCAN_INTERVAL,
@@ -215,7 +223,7 @@ class OptieFamilyConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class OptieFamilyOptionsFlow(OptionsFlow):
-    """Flux d'options : réglage de l'intervalle de mise à jour (anti-spam API)."""
+    """Flux d'options : intervalle de polling + pause nocturne."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
@@ -224,12 +232,18 @@ class OptieFamilyOptionsFlow(OptionsFlow):
                     "scan_interval": scan_interval_from_minutes(
                         user_input["scan_interval_minutes"]
                     ),
+                    CONF_PAUSE_UPDATES: bool(user_input.get(CONF_PAUSE_UPDATES, True)),
+                    CONF_PAUSE_UPDATES_START: str(
+                        user_input.get(CONF_PAUSE_UPDATES_START, DEFAULT_PAUSE_UPDATES_START)
+                    ),
+                    CONF_PAUSE_UPDATES_END: str(
+                        user_input.get(CONF_PAUSE_UPDATES_END, DEFAULT_PAUSE_UPDATES_END)
+                    ),
                 }
             )
 
-        current_seconds = clamp_scan_interval(
-            self.config_entry.options.get("scan_interval", DEFAULT_SCAN_INTERVAL)
-        )
+        options = self.config_entry.options
+        current_seconds = clamp_scan_interval(options.get("scan_interval", DEFAULT_SCAN_INTERVAL))
         schema = vol.Schema(
             {
                 vol.Required(
@@ -243,7 +257,19 @@ class OptieFamilyOptionsFlow(OptionsFlow):
                         mode=NumberSelectorMode.SLIDER,
                         unit_of_measurement="min",
                     )
-                )
+                ),
+                vol.Required(
+                    CONF_PAUSE_UPDATES,
+                    default=options.get(CONF_PAUSE_UPDATES, DEFAULT_PAUSE_UPDATES),
+                ): BooleanSelector(),
+                vol.Required(
+                    CONF_PAUSE_UPDATES_START,
+                    default=options.get(CONF_PAUSE_UPDATES_START, DEFAULT_PAUSE_UPDATES_START),
+                ): TimeSelector(),
+                vol.Required(
+                    CONF_PAUSE_UPDATES_END,
+                    default=options.get(CONF_PAUSE_UPDATES_END, DEFAULT_PAUSE_UPDATES_END),
+                ): TimeSelector(),
             }
         )
 

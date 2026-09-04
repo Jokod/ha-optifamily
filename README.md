@@ -112,7 +112,8 @@ Puis redémarrez Home Assistant.
 |---|---|
 | Présent aujourd’hui | `présent` / `absent` / `inconnu` |
 | Créneaux ce mois | Nombre de créneaux réguliers |
-| Transmissions du jour | Nouvelles transmissions |
+| Transmissions du jour | Compteur + détail (sieste, repas, changes…) |
+| Journal transmissions | Même contenu pour une date naviguable |
 | Albums | Nombre d’albums photos |
 
 Les noms exacts des entités dépendent du **nom de la crèche** et des prénoms
@@ -164,7 +165,9 @@ Cartes Lovelace HACS à installer **à la main** (HACS → Frontend). L’intég
 | auto-entities | [lovelace-auto-entities](https://github.com/thomasloven/lovelace-auto-entities) |
 | week-planner-card | [week-planner-card](https://github.com/FamousWolf/week-planner-card) |
 
-Onglets : **Aujourd’hui** (week-planner-card compact, 7 jours), **Enfants** et **Calendrier** (mois, mise en page panneau). Sans ces plugins, l’import affiche « custom element doesn’t exist ».
+Onglets : **Aujourd’hui**, **Enfants**, **Transmissions** (journal jour par jour) et **Calendrier** (mois). Sans ces plugins, l’import affiche « custom element doesn’t exist ».
+
+Services utiles pour le journal : `optifamily.set_transmissions_date` (date `YYYY-MM-DD`) et `optifamily.shift_transmissions_date` (`days: -1` / `1`).
 
 
 ### Package helpers (optionnel)
@@ -239,6 +242,9 @@ automation:
 | Option | Défaut | Description |
 |---|---|---|
 | Intervalle de mise à jour | **30 minutes** | Entre 5 et 120 minutes (réglable) |
+| Pause nocturne | **activée** | Pas d’appel API pendant la plage (le premier chargement reste toujours fait) |
+| Début de la pause | **21:00** | Heure locale Home Assistant |
+| Fin de la pause | **06:00** | Les mises à jour reprennent à partir de cette heure |
 
 Capteur diagnostic : `Dernier rafraîchissement` (horodatage du dernier polling réussi + intervalle en attributs).
 
@@ -259,7 +265,7 @@ Ne partagez jamais vos logs bruts (identifiants, tokens, données personnelles).
 
 - Dépend d’une API non officielle (peut casser en cas de changement côté optiFamily).
 - Pas d’écriture (pas de modification de planning depuis Home Assistant).
-- Les contenus détaillés des messages/transmissions ne sont pas tous exposés (compteurs et présence avant tout).
+- Les contenus détaillés des messages ne sont pas tous exposés (compteurs avant tout) ; les **transmissions du jour** le sont (détail + journal).
 
 ---
 

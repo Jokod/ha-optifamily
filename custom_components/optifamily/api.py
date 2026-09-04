@@ -14,6 +14,8 @@ from .const import (
     API_ALBUMS,
     API_BASE_URL,
     API_DOCUMENTS,
+    API_DOCUMENTS_ENFANT,
+    API_DOCUMENTS_FAMILLE,
     API_ENFANTS,
     API_FACTURATION,
     API_LOGIN,
@@ -330,6 +332,16 @@ class OptieFamilyApiClient:
         if cid is None:
             raise OptieFamilySetupError("Identifiant de crèche non disponible")
         path = API_DOCUMENTS.format(creche_id=cid)
+        return _as_list(await self._request("GET", path))
+
+    async def get_documents_famille(self, famille_id: int) -> list[dict[str, Any]]:
+        """Retourne les documents rattachés à la famille."""
+        path = API_DOCUMENTS_FAMILLE.format(famille_id=famille_id)
+        return _as_list(await self._request("GET", path))
+
+    async def get_documents_enfant(self, enfant_id: int) -> list[dict[str, Any]]:
+        """Retourne les documents rattachés à un enfant."""
+        path = API_DOCUMENTS_ENFANT.format(enfant_id=enfant_id)
         return _as_list(await self._request("GET", path))
 
     async def get_facturation(self) -> list[dict[str, Any]]:

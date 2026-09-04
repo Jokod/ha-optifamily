@@ -7,6 +7,15 @@ et ce projet adhère au [Versionnement Sémantique](https://semver.org/lang/fr/)
 
 ## [Unreleased]
 
+## [1.0.7] - 2026-09-04
+
+### Added
+- Transmissions : contenu détaillé exposé (`items`, `lignes`, `markdown`) sur le capteur du jour
+- Capteur **Journal transmissions** + services `optifamily.set_transmissions_date` / `shift_transmissions_date`
+- Tableau de bord : détail du jour sur Accueil + onglet **Transmissions** (navigation jour par jour)
+- Documents : endpoints famille et enfant (agrégés dans le compteur Documents)
+- Option **pause nocturne** des mises à jour (défaut 21:00 → 06:00, désactivable / horaires réglables)
+
 ## [1.0.6] - 2026-09-04
 
 ### Fixed

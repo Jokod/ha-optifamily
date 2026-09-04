@@ -186,6 +186,8 @@ Sans body, le backend répond `400` :
 | `GET` | `/api/auth/v3/opti-family/actualites/from/{from}/to/{to}` | ✅ Bearer | ✅ Observé |
 | `GET` | `/api/auth/v3/opti-family/messages` | ✅ Bearer | ✅ Observé |
 | `GET` | `/api/auth/v3/opti-family/documents/creche/{crecheId}` | ✅ Bearer | ✅ Observé |
+| `GET` | `/api/auth/v3/opti-family/documents/famille/{familleId}` | ✅ Bearer | ✅ Observé |
+| `GET` | `/api/auth/v3/opti-family/documents/enfant/{enfantId}` | ✅ Bearer | ✅ Observé |
 | `GET` | `/api/auth/v3/opti-family/facturation` | ✅ Bearer | ✅ Observé |
 | `GET` | `/api/auth/v3/opti-family/profil` | ✅ Bearer | ✅ Observé (sensible, **non utilisé** par HA) |
 | `POST` | `/api/auth/v3/opti-family/remove-fcm-token` | ✅ Bearer | ✅ Observé (non utilisé par HA) |
@@ -277,6 +279,21 @@ Exemple : `/enfant/ENFANT_ID/planning/2026/9`
 - `date` au format `YYYY-MM-DD`
 - Peut renvoyer `[]` s’il n’y a aucune transmission
 
+Champs observés (exemple) :
+
+| Champ | Description |
+|---|---|
+| `id` | Identifiant |
+| `date` | Jour ISO |
+| `heure` | Minutes depuis minuit (ordre / début sieste) |
+| `type` | `sieste`, `change`, `repas`, `arrivee`, … |
+| `sousType` | Ex. `couche`, `biberon` |
+| `valeur1` / `valeur2` / `valeur3` | Selon le type (fin de sieste, volume, pipi/caca…) |
+| `detail` | Libellé court (`01:00`, `210 ml`, `08:00`) |
+| `complements` | Note libre |
+| `icon` | Clé icône portail |
+| `marquant` | bool |
+
 ### `GET /api/auth/v3/opti-family/enfant/{enfantId}/albums`
 
 - Liste d’albums / photos ; peut être `[]`
@@ -317,6 +334,14 @@ Exemple : `/enfant/ENFANT_ID/planning/2026/9`
 ### `GET /api/auth/v3/opti-family/documents/creche/{crecheId}`
 
 - Documents de la crèche ; peut être `[]`
+
+### `GET /api/auth/v3/opti-family/documents/famille/{familleId}`
+
+- Documents rattachés à la famille (id issu de `/me`)
+
+### `GET /api/auth/v3/opti-family/documents/enfant/{enfantId}`
+
+- Documents rattachés à un enfant
 
 ### `GET /api/auth/v3/opti-family/facturation`
 

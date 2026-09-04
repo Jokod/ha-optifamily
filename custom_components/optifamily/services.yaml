@@ -1,0 +1,38 @@
+# Services OptiFamily — navigation du journal des transmissions
+
+set_transmissions_date:
+  name: Définir la date des transmissions
+  description: Charge le journal des transmissions pour une date donnée (tous les enfants).
+  fields:
+    date:
+      name: Date
+      description: Jour au format YYYY-MM-DD
+      required: true
+      selector:
+        date:
+    config_entry_id:
+      name: Entrée OptiFamily (optionnel)
+      description: Si plusieurs crèches, précisez l'entry_id
+      required: false
+      selector:
+        text:
+
+shift_transmissions_date:
+  name: Décaler la date des transmissions
+  description: Jour précédent (-1) ou suivant (+1) pour le journal.
+  fields:
+    days:
+      name: Décalage
+      description: Nombre de jours (ex. -1 = hier, 1 = demain)
+      required: true
+      default: -1
+      selector:
+        number:
+          min: -30
+          max: 30
+          mode: box
+    config_entry_id:
+      name: Entrée OptiFamily (optionnel)
+      required: false
+      selector:
+        text:

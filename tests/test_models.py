@@ -178,3 +178,73 @@ def test_planning_to_events(planning_present: dict, planning_absent: dict, today
         ]
     }
     assert planning_to_events(hidden, "A") == []
+
+
+def test_normalize_transmissions_sample() -> None:
+    raw = [
+        {
+            "id": 1,
+            "heure": "585",
+            "type": "sieste",
+            "sousType": "",
+            "valeur1": "645",
+            "detail": "01:00",
+            "complements": "dodo",
+            "icon": "sieste2",
+            "marquant": False,
+        },
+        {
+            "id": 2,
+            "heure": "690",
+            "type": "repas",
+            "sousType": "biberon",
+            "valeur1": "210",
+            "detail": "210 ml",
+            "complements": "",
+            "icon": "biberon",
+            "marquant": False,
+        },
+        {
+            "id": 3,
+            "heure": "779",
+            "type": "arrivee",
+            "sousType": "",
+            "valeur1": "480",
+            "detail": "08:00",
+            "complements": "repas 12h",
+            "icon": "arrivee",
+            "marquant": False,
+        },
+        {
+            "id": 4,
+            "heure": "825",
+            "type": "change",
+            "sousType": "couche",
+            "valeur1": "pipi",
+            "detail": "",
+            "complements": "",
+            "icon": "couche",
+            "marquant": False,
+        },
+    ]
+    from custom_components.optifamily.models import (
+        normalize_transmissions,
+        transmissions_markdown,
+    )
+
+    items = normalize_transmissions(raw)
+    assert len(items) == 4
+    assert items[0]["type"] == "sieste"
+    assert items[0]["heure"] == "09:45"
+    assert "01:00" in items[0]["ligne"]
+    assert items[0]["complements"] == "dodo"
+    biberon = next(i for i in items if i["type"] == "repas")
+    assert biberon["titre"] == "Biberon"
+    assert "210 ml" in biberon["ligne"]
+    arrivee = next(i for i in items if i["type"] == "arrivee")
+    assert arrivee["heure"] == "08:00"
+    change = next(i for i in items if i["type"] == "change")
+    assert "pipi" in change["ligne"]
+    md = transmissions_markdown(raw, enfant_libelle="Léa", jour="2026-09-04")
+    assert "Léa" in md
+    assert "•" in md

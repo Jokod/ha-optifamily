@@ -481,20 +481,38 @@ views:
                   options:
                     type: custom:mushroom-template-card
                     entity: this.entity_id
-                    layout: horizontal
+                    layout: vertical
+                    multiline_secondary: true
                     tap_action:
-                      action: more-info
+                      action: navigate
+                      navigation_path: reports
                     card_mod:
                       style: |
-                        ha-card { border-radius: 22px; border: none; box-shadow: none; }
+                        ha-card {
+                          border-radius: 22px;
+                          border: none;
+                          box-shadow: none;
+                        }
+                        mushroom-state-info {
+                          width: 100%;
+                        }
+                        span.secondary {
+                          white-space: pre-line !important;
+                          line-height: 1.35;
+                        }
                     icon: mdi:clipboard-text-outline
                     icon_color: teal
                     badge_icon: mdi:bell-badge
                     badge_color: teal
-                    primary: "{{ state_attr(entity, 'enfant_libelle') or 'Child' }}"
+                    primary: >
+                      {{ state_attr(entity, 'enfant_libelle') or 'Child' }}
+                      · {{ states(entity) | int(0) }}
                     secondary: >
-                      {% set n = states(entity) | int(0) %}
-                      {{ n }} report{{ 's' if n != 1 }} today
+                      {% set lignes = state_attr(entity, 'lignes') or [] %}
+                      {% if not lignes %}No reports
+                      {% else %}{{ lignes[:8] | join('\n') }}{% if lignes | length > 8 %}
+                      …{% endif %}
+                      {% endif %}
 
       - type: grid
         cards:
@@ -878,6 +896,123 @@ views:
                             tap_action:
                               action: more-info
                               entity: this.entity_id
+
+  # ─── Reports (day-by-day journal) ──────────────────────────────
+  - title: Reports
+    path: reports
+    icon: mdi:clipboard-text-clock-outline
+    type: sections
+    max_columns: 2
+    sections:
+      - type: grid
+        column_span: 2
+        cards:
+          - type: heading
+            heading: Journal
+            heading_style: title
+            icon: mdi:book-open-page-variant-outline
+          - type: custom:mushroom-chips-card
+            alignment: center
+            card_mod:
+              style: |
+                ha-card {
+                  border: none;
+                  box-shadow: none;
+                  background: transparent;
+                }
+            chips:
+              - type: template
+                icon: mdi:chevron-left
+                content: Previous
+                tap_action:
+                  action: call-service
+                  service: optifamily.shift_transmissions_date
+                  data:
+                    days: -1
+              - type: template
+                icon: mdi:calendar-today
+                icon_color: teal
+                content: >
+                  {% set j = states.sensor
+                    | selectattr('attributes', 'contains', 'optifamily_kind')
+                    | selectattr('attributes.optifamily_kind', 'eq', 'transmissions_journal')
+                    | list %}
+                  {% set d = (j[0].attributes.date if j else none) or now().date().isoformat() %}
+                  {{ d }}
+                tap_action:
+                  action: call-service
+                  service: optifamily.set_transmissions_date
+                  data:
+                    date: "{{ now().date().isoformat() }}"
+              - type: template
+                icon: mdi:chevron-right
+                content: Next
+                tap_action:
+                  action: call-service
+                  service: optifamily.shift_transmissions_date
+                  data:
+                    days: 1
+              - type: template
+                icon: mdi:calendar-refresh
+                content: Today
+                tap_action:
+                  action: call-service
+                  service: optifamily.set_transmissions_date
+                  data:
+                    date: "{{ now().date().isoformat() }}"
+
+      - type: grid
+        column_span: 2
+        cards:
+          - type: custom:auto-entities
+            show_empty: true
+            unique: entity_id
+            sort:
+              method: attribute
+              attribute: enfant_libelle
+            card:
+              type: vertical-stack
+            card_param: cards
+            filter:
+              exclude:
+                - state: unavailable
+              include:
+                - attributes:
+                    optifamily_kind: transmissions_journal
+                  options:
+                    type: custom:mushroom-template-card
+                    entity: this.entity_id
+                    layout: vertical
+                    multiline_secondary: true
+                    tap_action:
+                      action: more-info
+                    card_mod:
+                      style: |
+                        ha-card {
+                          border-radius: 24px;
+                          border: none;
+                          box-shadow: none;
+                          background: linear-gradient(
+                            120deg,
+                            color-mix(in srgb, #0d9488 14%, var(--ha-card-background, var(--card-background-color))),
+                            var(--ha-card-background, var(--card-background-color))
+                          );
+                        }
+                        span.secondary {
+                          white-space: pre-line !important;
+                          line-height: 1.4;
+                        }
+                    icon: mdi:clipboard-text-clock-outline
+                    icon_color: teal
+                    primary: >
+                      {{ state_attr(entity, 'enfant_libelle') or 'Child' }}
+                      · {{ state_attr(entity, 'date') or '' }}
+                      · {{ states(entity) | int(0) }}
+                    secondary: >
+                      {% set lignes = state_attr(entity, 'lignes') or [] %}
+                      {% if not lignes %}No reports for this day
+                      {% else %}{{ lignes | join('\n') }}
+                      {% endif %}
 
   # ─── Calendar ──────────────────────────────────────────────────
   # calendar needs string entity_ids; auto-entities wraps them as {entity:…}

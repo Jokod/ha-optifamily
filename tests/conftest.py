@@ -34,6 +34,7 @@ def _ensure_ha_stubs() -> None:
         "homeassistant.helpers.selector",
         "homeassistant.helpers.typing",
         "homeassistant.helpers.device_registry",
+        "homeassistant.helpers.config_validation",
         "homeassistant.components",
         "homeassistant.components.sensor",
         "homeassistant.components.calendar",
@@ -91,6 +92,9 @@ def _ensure_ha_stubs() -> None:
 
         def async_add_listener(self, listener: Any) -> Any:
             return lambda: None
+
+        def async_update_listeners(self) -> None:
+            return None
 
     class _ConfigFlow:
         def __init_subclass__(cls, *, domain: str | None = None, **kwargs: Any) -> None:
@@ -201,6 +205,7 @@ def _ensure_ha_stubs() -> None:
     core = sys.modules["homeassistant.core"]
     core.callback = _callback
     core.HomeAssistant = MagicMock
+    core.ServiceCall = MagicMock
 
     # selectors : renvoyer des types voluptuous-compatibles
     sel = sys.modules["homeassistant.helpers.selector"]
@@ -228,6 +233,8 @@ def _ensure_ha_stubs() -> None:
     sel.TextSelector = _text_selector
     sel.NumberSelector = _number_selector
     sel.SelectSelector = _select_selector
+    sel.BooleanSelector = lambda *args, **kwargs: bool
+    sel.TimeSelector = lambda *args, **kwargs: str
     sel.TextSelectorConfig = _Config
     sel.NumberSelectorConfig = _Config
     sel.SelectSelectorConfig = _Config
@@ -253,6 +260,11 @@ def _ensure_ha_stubs() -> None:
         return _DeviceRegistry()
 
     dr_mod.async_get = _async_get_registry
+
+    # config_validation (services)
+    cv_mod = sys.modules["homeassistant.helpers.config_validation"]
+    cv_mod.string = str
+    cv_mod.date = lambda value: value
 
     # homeassistant root
     ha = sys.modules["homeassistant"]
@@ -389,6 +401,8 @@ def fake_data() -> SimpleNamespace:
         messages=[],
         actualites={},
         documents=[],
+        documents_famille=[],
+        documents_enfant={},
         facturation=[],
     )
 
@@ -401,6 +415,9 @@ def hass(tmp_path) -> MagicMock:
     mock.config_entries.async_reload = AsyncMock(return_value=None)
     mock.config_entries.async_entries = MagicMock(return_value=[])
     mock.async_create_task = MagicMock()
+    mock.services.has_service = MagicMock(return_value=False)
+    mock.services.async_register = MagicMock()
+    mock.services.async_remove = MagicMock()
     mock.config_entries.flow.async_init = AsyncMock()
     mock.config.path = lambda *parts: str(tmp_path.joinpath(*parts))
 
