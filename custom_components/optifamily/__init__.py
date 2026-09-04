@@ -23,6 +23,7 @@ from .exceptions import (
     OptieFamilySetupError,
 )
 from .services import async_setup_services, async_unload_services
+from .themes import async_install_theme, async_uninstall_theme
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -87,6 +88,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: OptieFamilyConfigEntry) 
 
     async_setup_services(hass)
     await async_install_blueprints(hass)
+    await async_install_theme(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
@@ -112,6 +114,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: OptieFamilyConfigEntry)
     ]
     if not remaining:
         await async_uninstall_blueprints(hass)
+        await async_uninstall_theme(hass)
         async_unload_services(hass)
 
 

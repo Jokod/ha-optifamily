@@ -1,0 +1,11 @@
+# Thème OptiFamily — élargit les vues « sections » si utilisées.
+# Installé automatiquement dans config/themes/ par l'intégration.
+# Recharger les thèmes une fois (Paramètres → Outils de développeur).
+
+optifamily:
+  ha-view-sections-column-min-width: 320px
+  ha-view-sections-column-max-width: 960px
+  ha-view-sections-column-gap: 16px
+  ha-view-sections-row-gap: 12px
+  ha-section-grid-column-gap: 12px
+  ha-section-grid-row-gap: 10px

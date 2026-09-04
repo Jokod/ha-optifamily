@@ -7,6 +7,13 @@ et ce projet adhère au [Versionnement Sémantique](https://semver.org/lang/fr/)
 
 ## [Unreleased]
 
+## [1.0.10] - 2026-09-04
+
+### Changed
+- Tableaux de bord : layout **panel** plein largeur (plus de sections bridées à 500 px)
+- Transmissions : timeline cartes pleine largeur (bandeau gauche coloré)
+- Thème `optifamily` installé automatiquement dans `config/themes/`
+
 ## [1.0.9] - 2026-09-04
 
 ### Fixed

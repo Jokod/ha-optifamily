@@ -156,6 +156,12 @@ Après installation **HACS** (et un redémarrage), les blueprints sont copiés a
 Import : **Paramètres → Tableaux de bord → Ajouter → Importer YAML**.
 Les cartes détectent l’intégration automatiquement (`optifamily_kind`).
 
+Les vues sont en **panel plein largeur** (plus de colonnes HA bridées).
+Le thème `optifamily` est aussi **copié automatiquement** dans `config/themes/`
+(utile si vous réutilisez des sections). Une fois : `frontend:` →
+`themes: !include_dir_merge_named themes` dans `configuration.yaml`, puis
+recharger les thèmes.
+
 Cartes Lovelace HACS à installer **à la main** (HACS → Frontend). L’intégration **ne les installe pas**.
 
 | Carte | Dépôt |
