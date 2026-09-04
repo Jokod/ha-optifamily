@@ -37,9 +37,11 @@ from .const import (
     CONF_PAUSE_UPDATES,
     CONF_PAUSE_UPDATES_END,
     CONF_PAUSE_UPDATES_START,
+    CONF_PAUSE_WHEN_CLOSED,
     DEFAULT_PAUSE_UPDATES,
     DEFAULT_PAUSE_UPDATES_END,
     DEFAULT_PAUSE_UPDATES_START,
+    DEFAULT_PAUSE_WHEN_CLOSED,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     MAX_SCAN_INTERVAL,
@@ -239,6 +241,9 @@ class OptieFamilyOptionsFlow(OptionsFlow):
                     CONF_PAUSE_UPDATES_END: str(
                         user_input.get(CONF_PAUSE_UPDATES_END, DEFAULT_PAUSE_UPDATES_END)
                     ),
+                    CONF_PAUSE_WHEN_CLOSED: bool(
+                        user_input.get(CONF_PAUSE_WHEN_CLOSED, DEFAULT_PAUSE_WHEN_CLOSED)
+                    ),
                 }
             )
 
@@ -270,6 +275,10 @@ class OptieFamilyOptionsFlow(OptionsFlow):
                     CONF_PAUSE_UPDATES_END,
                     default=options.get(CONF_PAUSE_UPDATES_END, DEFAULT_PAUSE_UPDATES_END),
                 ): TimeSelector(),
+                vol.Required(
+                    CONF_PAUSE_WHEN_CLOSED,
+                    default=options.get(CONF_PAUSE_WHEN_CLOSED, DEFAULT_PAUSE_WHEN_CLOSED),
+                ): BooleanSelector(),
             }
         )
 

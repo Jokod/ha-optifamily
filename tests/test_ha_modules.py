@@ -696,6 +696,7 @@ async def test_config_flow_user_and_creche() -> None:
             "pause_updates": True,
             "pause_updates_start": "21:00:00",
             "pause_updates_end": "06:00:00",
+            "pause_when_closed": True,
         }
     )
     assert created["type"] == "create_entry"
@@ -703,3 +704,4 @@ async def test_config_flow_user_and_creche() -> None:
     assert created["data"]["pause_updates"] is True
     assert created["data"]["pause_updates_start"] == "21:00:00"
     assert created["data"]["pause_updates_end"] == "06:00:00"
+    assert created["data"]["pause_when_closed"] is True

@@ -22,9 +22,11 @@ from .const import (
     CONF_PAUSE_UPDATES,
     CONF_PAUSE_UPDATES_END,
     CONF_PAUSE_UPDATES_START,
+    CONF_PAUSE_WHEN_CLOSED,
     DEFAULT_PAUSE_UPDATES,
     DEFAULT_PAUSE_UPDATES_END,
     DEFAULT_PAUSE_UPDATES_START,
+    DEFAULT_PAUSE_WHEN_CLOSED,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     PLANNING_CACHE_TTL,
@@ -40,6 +42,7 @@ from .exceptions import (
     OptieFamilyConnectionError,
     OptieFamilyError,
 )
+from .models import is_creche_closed_for_family
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -235,13 +238,11 @@ class OptieFamilyCoordinator(DataUpdateCoordinator[OptieFamilyData]):
 
     async def _async_update_data(self) -> OptieFamilyData:
         """Méthode appelée automatiquement par HA toutes les N secondes."""
-        if self.data is not None and self._is_in_pause_window():
-            _LOGGER.debug(
-                "Pause de mise à jour OptiFamily (%s → %s)",
-                self.entry.options.get(CONF_PAUSE_UPDATES_START, DEFAULT_PAUSE_UPDATES_START),
-                self.entry.options.get(CONF_PAUSE_UPDATES_END, DEFAULT_PAUSE_UPDATES_END),
-            )
-            return self.data
+        if self.data is not None:
+            reason = self._pause_reason()
+            if reason:
+                _LOGGER.debug("Pause de mise à jour OptiFamily : %s", reason)
+                return self.data
 
         result = OptieFamilyData()
         result.persisted_enfants = list(self.entry.data.get(CONF_ENFANTS, []))
@@ -324,6 +325,26 @@ class OptieFamilyCoordinator(DataUpdateCoordinator[OptieFamilyData]):
                 eid: list(items) for eid, items in result.transmissions.items()
             }
         return result
+
+    def _pause_reason(self) -> str | None:
+        """Motif de pause (nuit ou crèche fermée) — None si le polling doit tourner."""
+        if self._is_in_pause_window():
+            start = self.entry.options.get(CONF_PAUSE_UPDATES_START, DEFAULT_PAUSE_UPDATES_START)
+            end = self.entry.options.get(CONF_PAUSE_UPDATES_END, DEFAULT_PAUSE_UPDATES_END)
+            return f"nocturne ({start} → {end})"
+        if self._is_creche_closed_pause():
+            return "crèche fermée / aucun créneau aujourd'hui"
+        return None
+
+    def _is_creche_closed_pause(self) -> bool:
+        """Pause si aucun enfant n'a de créneau régulier (planning en cache)."""
+        options = self.entry.options
+        enabled = options.get(CONF_PAUSE_WHEN_CLOSED, DEFAULT_PAUSE_WHEN_CLOSED)
+        if isinstance(enabled, str):
+            enabled = enabled.lower() in {"1", "true", "on", "yes"}
+        if not enabled or self.data is None:
+            return False
+        return is_creche_closed_for_family(self.data.plannings)
 
     def _is_in_pause_window(self) -> bool:
         """Fenêtre nocturne configurable (défaut 21h-6h, heure locale HA)."""

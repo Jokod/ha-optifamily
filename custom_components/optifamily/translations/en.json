@@ -31,12 +31,13 @@
     "step": {
       "init": {
         "title": "OptiFamily Options",
-        "description": "API polling interval (default 30 min, min {min_minutes} min, max {max_minutes} min). Night pause skips API calls overnight (default 21:00 → 06:00).",
+        "description": "API polling interval (default 30 min, min {min_minutes} min, max {max_minutes} min). Night pause skips API calls overnight (default 21:00 → 06:00). Closed-day pause skips polling when no child has a regular slot (weekend, closure).",
         "data": {
           "scan_interval_minutes": "Update interval",
           "pause_updates": "Pause updates at night",
           "pause_updates_start": "Pause starts",
-          "pause_updates_end": "Pause ends"
+          "pause_updates_end": "Pause ends",
+          "pause_when_closed": "Pause when daycare is closed / no slots"
         }
       }
     }

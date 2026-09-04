@@ -31,12 +31,13 @@
     "step": {
       "init": {
         "title": "Options OptiFamily",
-        "description": "Intervalle de polling API (défaut 30 min, mini {min_minutes} min, maxi {max_minutes} min). La pause nocturne évite les appels API la nuit (défaut 21:00 → 06:00).",
+        "description": "Intervalle de polling API (défaut 30 min, mini {min_minutes} min, maxi {max_minutes} min). La pause nocturne évite les appels API la nuit (défaut 21:00 → 06:00). La pause crèche fermée saute le polling les jours sans créneau (week-end, fermeture).",
         "data": {
           "scan_interval_minutes": "Intervalle de mise à jour",
           "pause_updates": "Pause nocturne des mises à jour",
           "pause_updates_start": "Début de la pause",
-          "pause_updates_end": "Fin de la pause"
+          "pause_updates_end": "Fin de la pause",
+          "pause_when_closed": "Pause si crèche fermée / aucun créneau"
         }
       }
     }

@@ -15,6 +15,7 @@ from custom_components.optifamily.api import OptieFamilyApiClient
 from custom_components.optifamily.const import (
     CONF_ENFANTS,
     CONF_PAUSE_UPDATES,
+    CONF_PAUSE_WHEN_CLOSED,
     is_update_paused,
     parse_clock,
 )
@@ -165,6 +166,45 @@ async def test_coordinator_pause_and_journal(hass: MagicMock) -> None:
         paused = await coord._async_update_data()
     assert paused is data
     client.get_me.assert_awaited_once()
+
+    # Pause crèche fermée (aucun créneau) — conserve le cache
+    closed_day = date.today().isoformat()
+    data.plannings = {
+        1: {"semaines": [{"journees": [{"date": closed_day, "creneaux": [{"type": "fermeture"}]}]}]}
+    }
+    coord.data = data
+    with patch.object(coord, "_is_in_pause_window", return_value=False):
+        paused_closed = await coord._async_update_data()
+    assert paused_closed is data
+    assert client.get_me.await_count == 1
+    assert coord._pause_reason() == "crèche fermée / aucun créneau aujourd'hui"
+
+    coord.entry.options = {CONF_PAUSE_WHEN_CLOSED: "0"}
+    assert coord._is_creche_closed_pause() is False
+    coord.entry.options = {CONF_PAUSE_WHEN_CLOSED: "yes"}
+    saved = coord.data
+    coord.data = None
+    assert coord._is_creche_closed_pause() is False
+    coord.data = saved
+    coord.entry.options = {CONF_PAUSE_WHEN_CLOSED: True}
+
+    # Réactive le polling (créneau régulier) pour la suite des tests
+    data.plannings = {
+        1: {
+            "semaines": [
+                {
+                    "journees": [
+                        {
+                            "date": closed_day,
+                            "creneaux": [{"type": "regulier", "label": "08:00 - 18:00"}],
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+    coord.data = data
+    assert coord._pause_reason() is None
 
     client.get_documents_famille = AsyncMock(side_effect=RuntimeError("f"))
     client.get_documents_enfant = AsyncMock(side_effect=RuntimeError("e"))

@@ -13,6 +13,7 @@ CONF_PASSWORD = "password"
 CONF_PAUSE_UPDATES = "pause_updates"
 CONF_PAUSE_UPDATES_START = "pause_updates_start"
 CONF_PAUSE_UPDATES_END = "pause_updates_end"
+CONF_PAUSE_WHEN_CLOSED = "pause_when_closed"
 
 # API
 API_BASE_URL = "https://back.opticreche.fr"
@@ -39,6 +40,7 @@ MAX_SCAN_INTERVAL = 7200  # maximum 2 heures
 DEFAULT_PAUSE_UPDATES = True
 DEFAULT_PAUSE_UPDATES_START = "21:00:00"
 DEFAULT_PAUSE_UPDATES_END = "06:00:00"
+DEFAULT_PAUSE_WHEN_CLOSED = True
 TOKEN_REFRESH_MARGIN = 60  # renouveler 60 s avant expiration
 # Planning calendrier : un appel API par mois/enfant, puis cache
 PLANNING_CACHE_TTL = DEFAULT_SCAN_INTERVAL  # 30 min (aligné polling)

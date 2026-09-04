@@ -75,6 +75,28 @@ def get_presence(planning: dict[str, Any] | None, day: date | None = None) -> st
     return "présent" if reguliers else "absent"
 
 
+def is_creche_closed_for_family(
+    plannings: dict[int, dict[str, Any]] | None,
+    day: date | None = None,
+) -> bool:
+    """True si le jour est connu et qu'aucun enfant n'a de créneau régulier.
+
+    Couvre week-ends, fermetures et jours sans inscription — à partir du
+    planning déjà en cache (pas d'appel API).
+    """
+    if not plannings:
+        return False
+    day = day or date.today()
+    known = False
+    for planning in plannings.values():
+        presence = get_presence(planning, day)
+        if presence == "présent":
+            return False
+        if presence == "absent":
+            known = True
+    return known
+
+
 def build_enfant_status(
     enfant: Enfant,
     planning: dict[str, Any] | None,

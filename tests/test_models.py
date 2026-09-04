@@ -12,6 +12,7 @@ from custom_components.optifamily.models import (
     format_creneau_labels,
     get_presence,
     get_today_creneaux,
+    is_creche_closed_for_family,
     iter_enfants,
     iter_year_months,
     parse_creneau_bounds,
@@ -47,6 +48,41 @@ def test_get_presence_absent(planning_absent: dict, today: date) -> None:
 def test_get_presence_inconnu() -> None:
     assert get_presence(None) == "inconnu"
     assert get_presence({"semaines": []}, date(2026, 9, 3)) == "inconnu"
+
+
+def test_is_creche_closed_for_family() -> None:
+    today = date.today()
+    assert is_creche_closed_for_family(None) is False
+    assert is_creche_closed_for_family({}) is False
+    assert is_creche_closed_for_family({1: {"semaines": []}}) is False
+    closed = {
+        1: {
+            "semaines": [
+                {"journees": [{"date": today.isoformat(), "creneaux": [{"type": "fermeture"}]}]}
+            ]
+        }
+    }
+    assert is_creche_closed_for_family(closed) is True
+    open_day = {
+        1: {
+            "semaines": [
+                {
+                    "journees": [
+                        {
+                            "date": today.isoformat(),
+                            "creneaux": [{"type": "regulier", "label": "08-18"}],
+                        }
+                    ]
+                }
+            ]
+        },
+        2: {
+            "semaines": [
+                {"journees": [{"date": today.isoformat(), "creneaux": [{"type": "fermeture"}]}]}
+            ]
+        },
+    }
+    assert is_creche_closed_for_family(open_day) is False
 
 
 def test_get_today_creneaux(planning_present: dict, today: date) -> None:

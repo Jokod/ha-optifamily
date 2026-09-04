@@ -7,6 +7,11 @@ et ce projet adhère au [Versionnement Sémantique](https://semver.org/lang/fr/)
 
 ## [Unreleased]
 
+## [1.0.11] - 2026-09-04
+
+### Added
+- Pause polling si crèche fermée / aucun créneau du jour (option `pause_when_closed`, défaut activée)
+
 ## [1.0.10] - 2026-09-04
 
 ### Changed
