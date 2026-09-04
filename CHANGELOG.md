@@ -7,6 +7,11 @@ et ce projet adhère au [Versionnement Sémantique](https://semver.org/lang/fr/)
 
 ## [Unreleased]
 
+## [1.0.9] - 2026-09-04
+
+### Fixed
+- Transmissions : rendu Lovelace via cartes Mushroom + chips (plus de HTML aplati par le markdown HA)
+
 ## [1.0.8] - 2026-09-04
 
 ### Changed

@@ -25,6 +25,7 @@ from custom_components.optifamily.coordinator import (
     _PlanningCacheEntry,
 )
 from custom_components.optifamily.models import (
+    _transmission_chips,
     _transmission_detail_text,
     _transmission_display_time,
     _transmission_title,
@@ -98,12 +99,22 @@ def test_transmission_edge_cases() -> None:
         _transmission_display_time({"type": "arrivee", "valeur1": "480", "detail": ""}) == "08:00"
     )
     assert _transmission_display_time({"type": "sieste", "heure": "", "valeur1": "600"}) == "10:00"
-    escaped = transmissions_markdown(
+    md = transmissions_markdown(
         [{"type": "note", "heure": "100", "detail": 'a <b> & "c"', "complements": ""}]
     )
-    assert "&lt;b&gt;" in escaped
-    assert "&amp;" in escaped
-    assert "&quot;c&quot;" in escaped
+    assert "Note" in md
+    assert 'a <b> & "c"' in md
+    assert _transmission_chips(
+        [
+            {"label": "Note", "value": "x", "kind": "note"},
+            {"label": "Heure", "value": "", "kind": "badge"},
+            {"label": "", "value": "ok", "kind": "badge"},
+            {"label": "Propreté", "value": "Couche", "kind": "chip"},
+        ]
+    ) == [
+        {"content": "ok", "tone": "info"},
+        {"content": "Couche", "tone": "success"},
+    ]
 
 
 @pytest.mark.asyncio

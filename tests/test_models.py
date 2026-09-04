@@ -253,13 +253,15 @@ def test_normalize_transmissions_sample() -> None:
     assert any(r["value"] == "Selles" for r in change["rows"])
     md = transmissions_markdown(raw, enfant_libelle="Léa", jour="2026-09-04")
     assert "Léa" in md
-    assert 'class="of-tx"' in md
+    assert "### Léa · 2026-09-04" in md
     assert "Sieste" in md
-    assert "of-tx-badge" in md
-    assert "of-tx-chip" in md
-    assert "of-tx-card--hot" in md
+    assert "`09:45`" in md
+    assert "**Bien**" in md
+    assert "★" in md
     preview = transmissions_markdown(raw, limit=2)
     assert "Voir le journal" in preview
-    assert transmissions_markdown([]) == (
-        '<div class="of-tx"><div class="of-tx-empty">Aucune transmission</div></div>'
-    )
+    empty = transmissions_markdown([])
+    assert "Aucune transmission" in empty
+    assert items[0]["chips"]
+    assert items[0]["color"] == "indigo"
+    assert "Début" in items[0]["bloc"]

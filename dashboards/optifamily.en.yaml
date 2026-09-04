@@ -457,140 +457,6 @@ views:
       - type: grid
         cards:
           - type: heading
-            heading: Reports
-            heading_style: title
-            icon: mdi:clipboard-text-outline
-          - type: custom:auto-entities
-            show_empty: false
-            unique: entity_id
-            sort:
-              method: state
-              numeric: true
-              reverse: true
-            card:
-              type: vertical-stack
-            card_param: cards
-            filter:
-              exclude:
-                - state: "0"
-                - state: unavailable
-                - state: unknown
-              include:
-                - attributes:
-                    optifamily_kind: transmissions
-                  options:
-                    type: markdown
-                    tap_action:
-                      action: navigate
-                      navigation_path: reports
-                    content: "{{ state_attr('this.entity_id', 'markdown') }}"
-                    card_mod:
-                      style:
-                        .: |
-                          ha-card {
-                            border-radius: 22px;
-                            border: none;
-                            box-shadow: none;
-                            background: color-mix(
-                              in srgb,
-                              #0d9488 6%,
-                              var(--ha-card-background, var(--card-background-color))
-                            );
-                            padding: 4px 2px 8px;
-                          }
-                        ha-markdown$: |
-                          .of-tx { font-size: 0.92rem; color: var(--primary-text-color); }
-                          .of-tx-head {
-                            font-weight: 700;
-                            font-size: 1.02rem;
-                            margin: 2px 4px 12px;
-                            opacity: 0.9;
-                          }
-                          .of-tx-empty, .of-tx-more {
-                            opacity: 0.65;
-                            font-style: italic;
-                            margin: 4px 8px;
-                          }
-                          .of-timeline {
-                            position: relative;
-                            margin: 0 4px 0 10px;
-                            padding: 0 0 4px 22px;
-                            border-left: 2px solid color-mix(in srgb, var(--divider-color) 80%, transparent);
-                          }
-                          .of-tx-item {
-                            position: relative;
-                            margin: 0 0 12px;
-                          }
-                          .of-tx-dot {
-                            position: absolute;
-                            left: -34px;
-                            top: 10px;
-                            width: 28px;
-                            height: 28px;
-                            border-radius: 50%;
-                            background: var(--ha-card-background, var(--card-background-color));
-                            border: 1px solid var(--divider-color);
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            font-size: 0.85rem;
-                            box-shadow: 0 1px 2px rgba(0,0,0,.06);
-                          }
-                          .of-tx-card {
-                            background: var(--ha-card-background, var(--card-background-color));
-                            border-radius: 14px;
-                            padding: 10px 12px 6px;
-                            box-shadow: 0 1px 4px rgba(0,0,0,.08);
-                            border: 1px solid color-mix(in srgb, var(--divider-color) 55%, transparent);
-                          }
-                          .of-tx-card--hot {
-                            border-color: color-mix(in srgb, #f59e0b 55%, var(--divider-color));
-                          }
-                          .of-tx-title {
-                            font-weight: 700;
-                            font-size: 1.05rem;
-                            margin: 0 0 4px;
-                          }
-                          .of-tx-row, .of-tx-note {
-                            display: flex;
-                            align-items: center;
-                            justify-content: space-between;
-                            gap: 10px;
-                            padding: 8px 0;
-                            border-top: 1px dashed color-mix(in srgb, var(--divider-color) 85%, transparent);
-                          }
-                          .of-tx-label {
-                            opacity: 0.78;
-                            font-size: 0.9rem;
-                          }
-                          .of-tx-badge {
-                            background: #5ba4d9;
-                            color: #fff;
-                            border-radius: 5px;
-                            padding: 3px 9px;
-                            font-weight: 600;
-                            font-size: 0.85rem;
-                            letter-spacing: 0.01em;
-                            white-space: nowrap;
-                          }
-                          .of-tx-chip {
-                            background: #22c55e;
-                            color: #fff;
-                            border-radius: 8px;
-                            padding: 4px 10px;
-                            font-weight: 600;
-                            font-size: 0.82rem;
-                            white-space: nowrap;
-                          }
-                          .of-tx-text, .of-tx-note-text {
-                            text-align: right;
-                            opacity: 0.9;
-                          }
-                          .of-tx-note-text { font-style: italic; }
-
-      - type: grid
-        cards:
-          - type: heading
             heading: Daycare life
             heading_style: title
             icon: mdi:town-hall
@@ -662,6 +528,92 @@ views:
                       {% elif n == 1 %}1 invoice
                       {% else %}{{ n }} invoices
                       {% endif %}
+
+      - type: grid
+        column_span: 3
+        cards:
+          - type: heading
+            heading: Reports
+            heading_style: title
+            icon: mdi:clipboard-text-outline
+          - type: custom:auto-entities
+            show_empty: false
+            card:
+              type: vertical-stack
+            card_param: cards
+            filter:
+              template: >
+                {% for s in states.sensor
+                  | selectattr('attributes.optifamily_kind', 'eq', 'transmissions')
+                  | list %}
+                  {% set n = states(s.entity_id) | int(0) %}
+                  {% if n > 0 and states(s.entity_id) not in ['unavailable', 'unknown'] %}
+                    {% set items = state_attr(s.entity_id, 'items') or [] %}
+                    {{
+                      {
+                        'type': 'custom:mushroom-template-card',
+                        'entity': s.entity_id,
+                        'icon': 'mdi:clipboard-text-outline',
+                        'icon_color': 'teal',
+                        'badge_icon': 'mdi:bell-badge',
+                        'badge_color': 'teal',
+                        'primary': (state_attr(s.entity_id, 'enfant_libelle') or 'Child') ~ ' · ' ~ n,
+                        'secondary': state_attr(s.entity_id, 'date') or '',
+                        'tap_action': {'action': 'navigate', 'navigation_path': 'reports'},
+                        'card_mod': {'style': 'ha-card{border-radius:20px!important;border:none!important;box-shadow:none!important;background:color-mix(in srgb,#0d9488 14%,var(--ha-card-background,var(--card-background-color)))!important;}'}
+                      }
+                    }},
+                    {% for item in items[:8] %}
+                      {% set note = (item.complements or '') | trim %}
+                      {% set chip_ns = namespace(chips=[]) %}
+                      {% for c in item.chips or [] %}
+                        {% set chip_ns.chips = chip_ns.chips + [{
+                          'type': 'template',
+                          'content': c.content,
+                          'icon_color': 'green' if c.tone == 'success' else 'light-blue',
+                        }] %}
+                      {% endfor %}
+                      {{
+                        {
+                          'type': 'custom:mushroom-template-card',
+                          'entity': s.entity_id,
+                          'icon': item.icon or 'mdi:clipboard-text-outline',
+                          'icon_color': item.color or 'teal',
+                          'primary': (item.titre or 'Transmission') ~ (' ★' if item.marquant else ''),
+                          'secondary': note if note else none,
+                          'multiline_secondary': true,
+                          'layout': 'horizontal',
+                          'tap_action': {'action': 'navigate', 'navigation_path': 'reports'},
+                          'card_mod': {'style': 'ha-card{border-radius:16px!important;border:none!important;box-shadow:0 1px 4px rgba(0,0,0,.12)!important;background:var(--ha-card-background,var(--card-background-color))!important;margin:0 0 2px 0;}mushroom-shape-icon{--icon-size:34px;}span.secondary{white-space:pre-line!important;line-height:1.4;opacity:.88;font-size:.85rem;}'}
+                        }
+                      }},
+                      {% if chip_ns.chips %}
+                      {{
+                        {
+                          'type': 'custom:mushroom-chips-card',
+                          'alignment': 'end',
+                          'card_mod': {'style': 'ha-card{border:none!important;box-shadow:none!important;background:transparent!important;padding:0 4px 10px 52px!important;margin-top:-6px;}'},
+                          'chips': chip_ns.chips,
+                        }
+                      }},
+                      {% endif %}
+                    {% endfor %}
+                    {% if items | length > 8 %}
+                    {{
+                      {
+                        'type': 'custom:mushroom-template-card',
+                        'entity': s.entity_id,
+                        'icon': 'mdi:dots-horizontal',
+                        'icon_color': 'teal',
+                        'primary': 'Open journal…',
+                        'secondary': '+' ~ ((items | length) - 8) ~ ' more',
+                        'tap_action': {'action': 'navigate', 'navigation_path': 'reports'},
+                        'card_mod': {'style': 'ha-card{border-radius:16px!important;border:none!important;box-shadow:none!important;}'}
+                      }
+                    }},
+                    {% endif %}
+                  {% endif %}
+                {% endfor %}
 
       - type: grid
         column_span: 3
@@ -1040,125 +992,65 @@ views:
         cards:
           - type: custom:auto-entities
             show_empty: true
-            unique: entity_id
-            sort:
-              method: attribute
-              attribute: enfant_libelle
             card:
               type: vertical-stack
             card_param: cards
             filter:
-              exclude:
-                - state: unavailable
-              include:
-                - attributes:
-                    optifamily_kind: transmissions_journal
-                  options:
-                    type: markdown
-                    tap_action:
-                      action: more-info
-                    content: "{{ state_attr('this.entity_id', 'markdown') }}"
-                    card_mod:
-                      style:
-                        .: |
-                          ha-card {
-                            border-radius: 24px;
-                            border: none;
-                            box-shadow: none;
-                            background: linear-gradient(
-                              120deg,
-                              color-mix(in srgb, #0d9488 12%, var(--ha-card-background, var(--card-background-color))),
-                              var(--ha-card-background, var(--card-background-color))
-                            );
-                            padding: 4px 2px 10px;
-                          }
-                        ha-markdown$: |
-                          .of-tx { font-size: 0.92rem; color: var(--primary-text-color); }
-                          .of-tx-head {
-                            font-weight: 700;
-                            font-size: 1.05rem;
-                            margin: 4px 6px 14px;
-                          }
-                          .of-tx-empty {
-                            opacity: 0.65;
-                            font-style: italic;
-                            margin: 4px 8px;
-                          }
-                          .of-timeline {
-                            position: relative;
-                            margin: 0 6px 0 12px;
-                            padding: 0 0 4px 24px;
-                            border-left: 2px solid color-mix(in srgb, var(--divider-color) 80%, transparent);
-                          }
-                          .of-tx-item {
-                            position: relative;
-                            margin: 0 0 14px;
-                          }
-                          .of-tx-dot {
-                            position: absolute;
-                            left: -36px;
-                            top: 12px;
-                            width: 28px;
-                            height: 28px;
-                            border-radius: 50%;
-                            background: var(--ha-card-background, var(--card-background-color));
-                            border: 1px solid var(--divider-color);
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            font-size: 0.85rem;
-                            box-shadow: 0 1px 2px rgba(0,0,0,.06);
-                          }
-                          .of-tx-card {
-                            background: var(--ha-card-background, var(--card-background-color));
-                            border-radius: 14px;
-                            padding: 12px 14px 8px;
-                            box-shadow: 0 1px 5px rgba(0,0,0,.09);
-                            border: 1px solid color-mix(in srgb, var(--divider-color) 55%, transparent);
-                          }
-                          .of-tx-card--hot {
-                            border-color: color-mix(in srgb, #f59e0b 55%, var(--divider-color));
-                          }
-                          .of-tx-title {
-                            font-weight: 700;
-                            font-size: 1.08rem;
-                            margin: 0 0 4px;
-                          }
-                          .of-tx-row, .of-tx-note {
-                            display: flex;
-                            align-items: center;
-                            justify-content: space-between;
-                            gap: 10px;
-                            padding: 9px 0;
-                            border-top: 1px dashed color-mix(in srgb, var(--divider-color) 85%, transparent);
-                          }
-                          .of-tx-label {
-                            opacity: 0.78;
-                            font-size: 0.9rem;
-                          }
-                          .of-tx-badge {
-                            background: #5ba4d9;
-                            color: #fff;
-                            border-radius: 5px;
-                            padding: 3px 9px;
-                            font-weight: 600;
-                            font-size: 0.85rem;
-                            white-space: nowrap;
-                          }
-                          .of-tx-chip {
-                            background: #22c55e;
-                            color: #fff;
-                            border-radius: 8px;
-                            padding: 4px 10px;
-                            font-weight: 600;
-                            font-size: 0.82rem;
-                            white-space: nowrap;
-                          }
-                          .of-tx-text, .of-tx-note-text {
-                            text-align: right;
-                            opacity: 0.9;
-                          }
-                          .of-tx-note-text { font-style: italic; }
+              template: >
+                {% for s in states.sensor
+                  | selectattr('attributes.optifamily_kind', 'eq', 'transmissions_journal')
+                  | list %}
+                  {% if states(s.entity_id) not in ['unavailable', 'unknown'] %}
+                    {% set n = states(s.entity_id) | int(0) %}
+                    {% set items = state_attr(s.entity_id, 'items') or [] %}
+                    {{
+                      {
+                        'type': 'custom:mushroom-template-card',
+                        'entity': s.entity_id,
+                        'icon': 'mdi:clipboard-text-clock-outline',
+                        'icon_color': 'teal',
+                        'primary': (state_attr(s.entity_id, 'enfant_libelle') or 'Child') ~ ' · ' ~ (state_attr(s.entity_id, 'date') or '') ~ ' · ' ~ n,
+                        'secondary': 'No reports for this day' if n == 0 else none,
+                        'tap_action': {'action': 'more-info'},
+                        'card_mod': {'style': 'ha-card{border-radius:20px!important;border:none!important;box-shadow:none!important;background:color-mix(in srgb,#0d9488 14%,var(--ha-card-background,var(--card-background-color)))!important;}'}
+                      }
+                    }},
+                    {% for item in items %}
+                      {% set note = (item.complements or '') | trim %}
+                      {{
+                        {
+                          'type': 'custom:mushroom-template-card',
+                          'entity': s.entity_id,
+                          'icon': item.icon or 'mdi:clipboard-text-outline',
+                          'icon_color': item.color or 'teal',
+                          'primary': (item.titre or 'Transmission') ~ (' ★' if item.marquant else ''),
+                          'secondary': note if note else none,
+                          'multiline_secondary': true,
+                          'layout': 'horizontal',
+                          'tap_action': {'action': 'more-info'},
+                          'card_mod': {'style': 'ha-card{border-radius:16px!important;border:none!important;box-shadow:0 1px 4px rgba(0,0,0,.12)!important;background:var(--ha-card-background,var(--card-background-color))!important;margin:0 0 2px 0;}mushroom-shape-icon{--icon-size:34px;}span.secondary{white-space:pre-line!important;line-height:1.4;opacity:.88;font-size:.85rem;}'}
+                        }
+                      }},
+                      {% if item.chips %}
+                      {{
+                        {
+                          'type': 'custom:mushroom-chips-card',
+                          'alignment': 'end',
+                          'card_mod': {'style': 'ha-card{border:none!important;box-shadow:none!important;background:transparent!important;padding:0 4px 10px 52px!important;margin-top:-6px;}'},
+                          'chips': [
+                            {
+                              'type': 'template',
+                              'content': c.content,
+                              'icon_color': 'green' if c.tone == 'success' else 'light-blue',
+                            }
+                            for c in item.chips
+                          ]
+                        }
+                      }},
+                      {% endif %}
+                    {% endfor %}
+                  {% endif %}
+                {% endfor %}
 
   # ─── Calendar ──────────────────────────────────────────────────
   # calendar needs string entity_ids; auto-entities wraps them as {entity:…}
