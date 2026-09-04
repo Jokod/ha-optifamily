@@ -112,8 +112,8 @@ Puis redémarrez Home Assistant.
 |---|---|
 | Présent aujourd’hui | `présent` / `absent` / `inconnu` |
 | Créneaux ce mois | Nombre de créneaux réguliers |
-| Transmissions du jour | Compteur + détail (sieste, repas, changes…) |
-| Journal transmissions | Même contenu pour une date naviguable |
+| Transmissions du jour | Compteur + timeline (cartes sieste / change / repas…) |
+| Journal transmissions | Même timeline pour une date naviguable |
 | Albums | Nombre d’albums photos |
 
 Les noms exacts des entités dépendent du **nom de la crèche** et des prénoms

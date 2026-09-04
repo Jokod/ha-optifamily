@@ -188,6 +188,7 @@ def test_normalize_transmissions_sample() -> None:
             "type": "sieste",
             "sousType": "",
             "valeur1": "645",
+            "valeur2": "2",
             "detail": "01:00",
             "complements": "dodo",
             "icon": "sieste2",
@@ -220,11 +221,12 @@ def test_normalize_transmissions_sample() -> None:
             "heure": "825",
             "type": "change",
             "sousType": "couche",
-            "valeur1": "pipi",
+            "valeur1": "caca",
+            "valeur2": "Non défini",
             "detail": "",
             "complements": "",
             "icon": "couche",
-            "marquant": False,
+            "marquant": True,
         },
     ]
     from custom_components.optifamily.models import (
@@ -236,6 +238,9 @@ def test_normalize_transmissions_sample() -> None:
     assert len(items) == 4
     assert items[0]["type"] == "sieste"
     assert items[0]["heure"] == "09:45"
+    assert items[0]["debut"] == "09:45"
+    assert items[0]["fin"] == "10:45"
+    assert any(r["value"] == "Bien" for r in items[0]["rows"])
     assert "01:00" in items[0]["ligne"]
     assert items[0]["complements"] == "dodo"
     biberon = next(i for i in items if i["type"] == "repas")
@@ -244,7 +249,17 @@ def test_normalize_transmissions_sample() -> None:
     arrivee = next(i for i in items if i["type"] == "arrivee")
     assert arrivee["heure"] == "08:00"
     change = next(i for i in items if i["type"] == "change")
-    assert "pipi" in change["ligne"]
+    assert any(r["value"] == "Couche" for r in change["rows"])
+    assert any(r["value"] == "Selles" for r in change["rows"])
     md = transmissions_markdown(raw, enfant_libelle="Léa", jour="2026-09-04")
     assert "Léa" in md
-    assert "•" in md
+    assert 'class="of-tx"' in md
+    assert "Sieste" in md
+    assert "of-tx-badge" in md
+    assert "of-tx-chip" in md
+    assert "of-tx-card--hot" in md
+    preview = transmissions_markdown(raw, limit=2)
+    assert "Voir le journal" in preview
+    assert transmissions_markdown([]) == (
+        '<div class="of-tx"><div class="of-tx-empty">Aucune transmission</div></div>'
+    )

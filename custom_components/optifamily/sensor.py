@@ -436,7 +436,10 @@ class OptieFamilyChildTransmissionsSensor(_ChildSensor):
             "items": items,
             "lignes": [i["ligne"] for i in items],
             "markdown": transmissions_markdown(
-                raw, enfant_libelle=self._enfant.libelle, jour=date.today().isoformat()
+                raw,
+                enfant_libelle=self._enfant.libelle,
+                jour=date.today().isoformat(),
+                limit=8,
             ),
         }
 

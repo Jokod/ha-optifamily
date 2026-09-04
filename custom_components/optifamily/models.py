@@ -218,6 +218,38 @@ _TRANSMISSION_ICON_MDI: dict[str, str] = {
     "note": "mdi:note-text-outline",
 }
 
+_TRANSMISSION_EMOJI: dict[str, str] = {
+    "sieste": "💤",
+    "change": "🧷",
+    "repas": "🍼",
+    "arrivee": "🚪",
+    "depart": "🏠",
+    "activite": "🎨",
+    "sante": "💊",
+    "humeur": "😊",
+    "note": "📝",
+}
+
+_SIESTE_QUALITE: dict[str, str] = {
+    "0": "Pas dormi",
+    "1": "Peu",
+    "2": "Bien",
+    "3": "Très bien",
+}
+
+_CHANGE_PROPRETE: dict[str, str] = {
+    "couche": "Couche",
+    "pot": "Sur le pot",
+    "toilettes": "Aux toilettes",
+    "toilette": "Aux toilettes",
+    "": "Aucun",
+}
+
+_CHANGE_CONTENU: dict[str, str] = {
+    "pipi": "Urine",
+    "caca": "Selles",
+}
+
 
 def format_minutes_clock(value: Any) -> str | None:
     """Convertit des minutes depuis minuit (`585` → `09:45`)."""
@@ -270,12 +302,67 @@ def _transmission_detail_text(raw: dict[str, Any]) -> str:
     if kind == "sieste":
         return detail
     if kind in {"arrivee", "depart"}:
-        # L'heure est déjà dans display_time ; garder le détail s'il n'est pas redondant
         clock = _transmission_display_time(raw)
         if detail and detail != clock and not re.fullmatch(r"\d{1,2}:\d{2}", detail):
             return detail
         return ""
     return detail or v1
+
+
+def _transmission_rows(
+    raw: dict[str, Any], *, debut: str | None, fin: str | None
+) -> list[dict[str, str]]:
+    """Lignes label/valeur pour l'UI type portail (badges)."""
+    kind = str(raw.get("type") or "").lower()
+    sous = str(raw.get("sousType") or raw.get("sous_type") or "").strip().lower()
+    v1 = str(raw.get("valeur1") or "").strip()
+    v2 = str(raw.get("valeur2") or "").strip()
+    detail = str(raw.get("detail") or "").strip()
+    complements = str(raw.get("complements") or "").strip()
+    rows: list[dict[str, str]] = []
+
+    if kind == "sieste":
+        if debut:
+            rows.append({"label": "Début", "value": debut, "kind": "badge"})
+        if fin:
+            rows.append({"label": "Fin", "value": fin, "kind": "badge"})
+        if detail:
+            rows.append({"label": "Durée", "value": detail, "kind": "badge"})
+        qualite = _SIESTE_QUALITE.get(v2)
+        if qualite:
+            rows.append({"label": "Qualité du sommeil", "value": qualite, "kind": "chip"})
+    elif kind == "change":
+        heure = format_minutes_clock(raw.get("heure"))
+        if heure:
+            rows.append({"label": "Heure", "value": heure, "kind": "badge"})
+        proprete = _CHANGE_PROPRETE.get(sous, sous.capitalize() if sous else "Aucun")
+        rows.append({"label": "Propreté", "value": proprete, "kind": "chip"})
+        contenu = _CHANGE_CONTENU.get(v1.lower(), v1.capitalize() if v1 else "")
+        if contenu:
+            rows.append({"label": "Contenu", "value": contenu, "kind": "chip"})
+        if v2:
+            rows.append({"label": "Type de selles", "value": v2, "kind": "badge"})
+    elif kind == "repas":
+        heure = format_minutes_clock(raw.get("heure"))
+        if heure:
+            rows.append({"label": "Heure", "value": heure, "kind": "badge"})
+        volume = detail or (f"{v1} ml" if v1.isdigit() else v1)
+        if volume:
+            rows.append({"label": "Quantité", "value": volume, "kind": "badge"})
+    elif kind in {"arrivee", "depart"}:
+        heure = _transmission_display_time(raw)
+        if heure:
+            rows.append({"label": "Heure", "value": heure, "kind": "badge"})
+    else:
+        heure = format_minutes_clock(raw.get("heure"))
+        if heure:
+            rows.append({"label": "Heure", "value": heure, "kind": "badge"})
+        if detail:
+            rows.append({"label": "Détail", "value": detail, "kind": "text"})
+
+    if complements:
+        rows.append({"label": "Note", "value": complements, "kind": "note"})
+    return rows
 
 
 def normalize_transmission(raw: dict[str, Any]) -> dict[str, Any] | None:
@@ -287,29 +374,39 @@ def normalize_transmission(raw: dict[str, Any]) -> dict[str, Any] | None:
     titre = _transmission_title(raw)
     detail = _transmission_detail_text(raw)
     complements = str(raw.get("complements") or "").strip()
+    debut = fin = None
+    if kind == "sieste":
+        debut = format_minutes_clock(raw.get("heure"))
+        fin = format_minutes_clock(raw.get("valeur1"))
     heure = _transmission_display_time(raw)
+    rows = _transmission_rows(raw, debut=debut, fin=fin)
     sort_key = 0
     try:
         sort_key = int(raw.get("heure") or 0)
     except (TypeError, ValueError):
         sort_key = 0
-    return {
+    item = {
         "id": raw.get("id"),
         "type": kind,
         "sous_type": str(raw.get("sousType") or raw.get("sous_type") or "").strip(),
         "icon": _TRANSMISSION_ICON_MDI.get(icon_key)
         or _TRANSMISSION_ICON_MDI.get(kind)
         or "mdi:clipboard-text-outline",
+        "emoji": _TRANSMISSION_EMOJI.get(kind, "📋"),
         "heure": heure,
+        "debut": debut,
+        "fin": fin,
         "titre": titre,
         "detail": detail,
         "complements": complements,
         "marquant": bool(raw.get("marquant")),
+        "rows": rows,
         "sort_key": sort_key,
         "ligne": format_transmission_ligne(
             {"heure": heure, "titre": titre, "detail": detail, "complements": complements}
         ),
     }
+    return item
 
 
 def format_transmission_ligne(item: dict[str, Any]) -> str:
@@ -338,25 +435,88 @@ def normalize_transmissions(raw_list: list[dict[str, Any]] | None) -> list[dict[
     return items
 
 
+def _html_escape(value: str) -> str:
+    return (
+        str(value)
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+def transmissions_timeline_html(
+    raw_list: list[dict[str, Any]] | None,
+    *,
+    enfant_libelle: str | None = None,
+    jour: str | None = None,
+    limit: int | None = None,
+) -> str:
+    """Timeline HTML (cartes) pour markdown Lovelace + card-mod."""
+    items = normalize_transmissions(raw_list)
+    truncated = False
+    if limit is not None and len(items) > limit:
+        items = items[:limit]
+        truncated = True
+
+    parts: list[str] = ['<div class="of-tx">']
+    header_bits = [str(b) for b in (enfant_libelle, jour) if b]
+    if header_bits:
+        parts.append(f'<div class="of-tx-head">{_html_escape(" · ".join(header_bits))}</div>')
+    if not items:
+        parts.append('<div class="of-tx-empty">Aucune transmission</div></div>')
+        return "".join(parts)
+
+    parts.append('<div class="of-timeline">')
+    for item in items:
+        emoji = _html_escape(str(item.get("emoji") or "📋"))
+        titre = _html_escape(str(item.get("titre") or "Transmission"))
+        star = " of-tx-card--hot" if item.get("marquant") else ""
+        parts.append(f'<div class="of-tx-item"><div class="of-tx-dot">{emoji}</div>')
+        parts.append(f'<div class="of-tx-card{star}"><div class="of-tx-title">{titre}</div>')
+        for row in item.get("rows") or []:
+            label = _html_escape(str(row.get("label") or ""))
+            value = _html_escape(str(row.get("value") or ""))
+            kind = str(row.get("kind") or "badge")
+            if kind == "note":
+                parts.append(
+                    f'<div class="of-tx-note"><span class="of-tx-label">{label}</span>'
+                    f'<span class="of-tx-note-text">{value}</span></div>'
+                )
+            elif kind == "chip":
+                parts.append(
+                    f'<div class="of-tx-row"><span class="of-tx-label">{label}</span>'
+                    f'<span class="of-tx-chip">{value}</span></div>'
+                )
+            elif kind == "text":
+                parts.append(
+                    f'<div class="of-tx-row"><span class="of-tx-label">{label}</span>'
+                    f'<span class="of-tx-text">{value}</span></div>'
+                )
+            else:
+                parts.append(
+                    f'<div class="of-tx-row"><span class="of-tx-label">{label}</span>'
+                    f'<span class="of-tx-badge">{value}</span></div>'
+                )
+        parts.append("</div></div>")
+    parts.append("</div>")
+    if truncated:
+        parts.append('<div class="of-tx-more">Voir le journal pour la suite…</div>')
+    parts.append("</div>")
+    return "".join(parts)
+
+
 def transmissions_markdown(
     raw_list: list[dict[str, Any]] | None,
     *,
     enfant_libelle: str | None = None,
     jour: str | None = None,
+    limit: int | None = None,
 ) -> str:
-    """Bloc markdown pour cartes Lovelace."""
-    items = normalize_transmissions(raw_list)
-    header_bits = [str(b) for b in (enfant_libelle, jour) if b]
-    lines: list[str] = []
-    if header_bits:
-        lines.append(f"**{' — '.join(header_bits)}**")
-    if not items:
-        lines.append("_Aucune transmission_")
-        return "\n".join(lines)
-    for item in items:
-        icon = "★" if item.get("marquant") else "•"
-        lines.append(f"{icon} {item['ligne']}")
-    return "\n".join(lines)
+    """Timeline riche (HTML) pour cartes Lovelace — repli texte si besoin."""
+    return transmissions_timeline_html(
+        raw_list, enfant_libelle=enfant_libelle, jour=jour, limit=limit
+    )
 
 
 def iter_year_months(start: datetime, end: datetime) -> list[tuple[int, int]]:

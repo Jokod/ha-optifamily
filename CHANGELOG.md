@@ -7,6 +7,11 @@ et ce projet adhère au [Versionnement Sémantique](https://semver.org/lang/fr/)
 
 ## [Unreleased]
 
+## [1.0.8] - 2026-09-04
+
+### Changed
+- Transmissions : timeline type portail (cartes, badges horaires, chips qualité/propreté) via `markdown` HTML + tableaux de bord
+
 ## [1.0.7] - 2026-09-04
 
 ### Added

@@ -31,6 +31,7 @@ from custom_components.optifamily.models import (
     format_minutes_clock,
     normalize_transmission,
     normalize_transmissions,
+    transmissions_markdown,
 )
 from tests.test_api_coverage import _url
 
@@ -97,6 +98,12 @@ def test_transmission_edge_cases() -> None:
         _transmission_display_time({"type": "arrivee", "valeur1": "480", "detail": ""}) == "08:00"
     )
     assert _transmission_display_time({"type": "sieste", "heure": "", "valeur1": "600"}) == "10:00"
+    escaped = transmissions_markdown(
+        [{"type": "note", "heure": "100", "detail": 'a <b> & "c"', "complements": ""}]
+    )
+    assert "&lt;b&gt;" in escaped
+    assert "&amp;" in escaped
+    assert "&quot;c&quot;" in escaped
 
 
 @pytest.mark.asyncio

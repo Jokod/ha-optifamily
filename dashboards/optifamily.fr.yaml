@@ -470,40 +470,114 @@ views:
                 - attributes:
                     optifamily_kind: transmissions
                   options:
-                    type: custom:mushroom-template-card
-                    entity: this.entity_id
-                    layout: vertical
-                    multiline_secondary: true
+                    type: markdown
                     tap_action:
                       action: navigate
                       navigation_path: transmissions
+                    content: "{{ state_attr('this.entity_id', 'markdown') }}"
                     card_mod:
-                      style: |
-                        ha-card {
-                          border-radius: 22px;
-                          border: none;
-                          box-shadow: none;
-                        }
-                        mushroom-state-info {
-                          width: 100%;
-                        }
-                        span.secondary {
-                          white-space: pre-line !important;
-                          line-height: 1.35;
-                        }
-                    icon: mdi:clipboard-text-outline
-                    icon_color: teal
-                    badge_icon: mdi:bell-badge
-                    badge_color: teal
-                    primary: >
-                      {{ state_attr(entity, 'enfant_libelle') or 'Enfant' }}
-                      · {{ states(entity) | int(0) }}
-                    secondary: >
-                      {% set lignes = state_attr(entity, 'lignes') or [] %}
-                      {% if not lignes %}Aucune transmission
-                      {% else %}{{ lignes[:8] | join('\n') }}{% if lignes | length > 8 %}
-                      …{% endif %}
-                      {% endif %}
+                      style:
+                        .: |
+                          ha-card {
+                            border-radius: 22px;
+                            border: none;
+                            box-shadow: none;
+                            background: color-mix(
+                              in srgb,
+                              #0d9488 6%,
+                              var(--ha-card-background, var(--card-background-color))
+                            );
+                            padding: 4px 2px 8px;
+                          }
+                        ha-markdown$: |
+                          .of-tx { font-size: 0.92rem; color: var(--primary-text-color); }
+                          .of-tx-head {
+                            font-weight: 700;
+                            font-size: 1.02rem;
+                            margin: 2px 4px 12px;
+                            opacity: 0.9;
+                          }
+                          .of-tx-empty, .of-tx-more {
+                            opacity: 0.65;
+                            font-style: italic;
+                            margin: 4px 8px;
+                          }
+                          .of-timeline {
+                            position: relative;
+                            margin: 0 4px 0 10px;
+                            padding: 0 0 4px 22px;
+                            border-left: 2px solid color-mix(in srgb, var(--divider-color) 80%, transparent);
+                          }
+                          .of-tx-item {
+                            position: relative;
+                            margin: 0 0 12px;
+                          }
+                          .of-tx-dot {
+                            position: absolute;
+                            left: -34px;
+                            top: 10px;
+                            width: 28px;
+                            height: 28px;
+                            border-radius: 50%;
+                            background: var(--ha-card-background, var(--card-background-color));
+                            border: 1px solid var(--divider-color);
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            font-size: 0.85rem;
+                            box-shadow: 0 1px 2px rgba(0,0,0,.06);
+                          }
+                          .of-tx-card {
+                            background: var(--ha-card-background, var(--card-background-color));
+                            border-radius: 14px;
+                            padding: 10px 12px 6px;
+                            box-shadow: 0 1px 4px rgba(0,0,0,.08);
+                            border: 1px solid color-mix(in srgb, var(--divider-color) 55%, transparent);
+                          }
+                          .of-tx-card--hot {
+                            border-color: color-mix(in srgb, #f59e0b 55%, var(--divider-color));
+                          }
+                          .of-tx-title {
+                            font-weight: 700;
+                            font-size: 1.05rem;
+                            margin: 0 0 4px;
+                          }
+                          .of-tx-row, .of-tx-note {
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            gap: 10px;
+                            padding: 8px 0;
+                            border-top: 1px dashed color-mix(in srgb, var(--divider-color) 85%, transparent);
+                          }
+                          .of-tx-label {
+                            opacity: 0.78;
+                            font-size: 0.9rem;
+                          }
+                          .of-tx-badge {
+                            background: #5ba4d9;
+                            color: #fff;
+                            border-radius: 5px;
+                            padding: 3px 9px;
+                            font-weight: 600;
+                            font-size: 0.85rem;
+                            letter-spacing: 0.01em;
+                            white-space: nowrap;
+                          }
+                          .of-tx-chip {
+                            background: #22c55e;
+                            color: #fff;
+                            border-radius: 8px;
+                            padding: 4px 10px;
+                            font-weight: 600;
+                            font-size: 0.82rem;
+                            white-space: nowrap;
+                          }
+                          .of-tx-text, .of-tx-note-text {
+                            text-align: right;
+                            opacity: 0.9;
+                          }
+                          .of-tx-note-text { font-style: italic; }
 
       - type: grid
         cards:
@@ -971,39 +1045,111 @@ views:
                 - attributes:
                     optifamily_kind: transmissions_journal
                   options:
-                    type: custom:mushroom-template-card
-                    entity: this.entity_id
-                    layout: vertical
-                    multiline_secondary: true
+                    type: markdown
                     tap_action:
                       action: more-info
+                    content: "{{ state_attr('this.entity_id', 'markdown') }}"
                     card_mod:
-                      style: |
-                        ha-card {
-                          border-radius: 24px;
-                          border: none;
-                          box-shadow: none;
-                          background: linear-gradient(
-                            120deg,
-                            color-mix(in srgb, #0d9488 14%, var(--ha-card-background, var(--card-background-color))),
-                            var(--ha-card-background, var(--card-background-color))
-                          );
-                        }
-                        span.secondary {
-                          white-space: pre-line !important;
-                          line-height: 1.4;
-                        }
-                    icon: mdi:clipboard-text-clock-outline
-                    icon_color: teal
-                    primary: >
-                      {{ state_attr(entity, 'enfant_libelle') or 'Enfant' }}
-                      · {{ state_attr(entity, 'date') or '' }}
-                      · {{ states(entity) | int(0) }}
-                    secondary: >
-                      {% set lignes = state_attr(entity, 'lignes') or [] %}
-                      {% if not lignes %}Aucune transmission ce jour
-                      {% else %}{{ lignes | join('\n') }}
-                      {% endif %}
+                      style:
+                        .: |
+                          ha-card {
+                            border-radius: 24px;
+                            border: none;
+                            box-shadow: none;
+                            background: linear-gradient(
+                              120deg,
+                              color-mix(in srgb, #0d9488 12%, var(--ha-card-background, var(--card-background-color))),
+                              var(--ha-card-background, var(--card-background-color))
+                            );
+                            padding: 4px 2px 10px;
+                          }
+                        ha-markdown$: |
+                          .of-tx { font-size: 0.92rem; color: var(--primary-text-color); }
+                          .of-tx-head {
+                            font-weight: 700;
+                            font-size: 1.05rem;
+                            margin: 4px 6px 14px;
+                          }
+                          .of-tx-empty {
+                            opacity: 0.65;
+                            font-style: italic;
+                            margin: 4px 8px;
+                          }
+                          .of-timeline {
+                            position: relative;
+                            margin: 0 6px 0 12px;
+                            padding: 0 0 4px 24px;
+                            border-left: 2px solid color-mix(in srgb, var(--divider-color) 80%, transparent);
+                          }
+                          .of-tx-item {
+                            position: relative;
+                            margin: 0 0 14px;
+                          }
+                          .of-tx-dot {
+                            position: absolute;
+                            left: -36px;
+                            top: 12px;
+                            width: 28px;
+                            height: 28px;
+                            border-radius: 50%;
+                            background: var(--ha-card-background, var(--card-background-color));
+                            border: 1px solid var(--divider-color);
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            font-size: 0.85rem;
+                            box-shadow: 0 1px 2px rgba(0,0,0,.06);
+                          }
+                          .of-tx-card {
+                            background: var(--ha-card-background, var(--card-background-color));
+                            border-radius: 14px;
+                            padding: 12px 14px 8px;
+                            box-shadow: 0 1px 5px rgba(0,0,0,.09);
+                            border: 1px solid color-mix(in srgb, var(--divider-color) 55%, transparent);
+                          }
+                          .of-tx-card--hot {
+                            border-color: color-mix(in srgb, #f59e0b 55%, var(--divider-color));
+                          }
+                          .of-tx-title {
+                            font-weight: 700;
+                            font-size: 1.08rem;
+                            margin: 0 0 4px;
+                          }
+                          .of-tx-row, .of-tx-note {
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            gap: 10px;
+                            padding: 9px 0;
+                            border-top: 1px dashed color-mix(in srgb, var(--divider-color) 85%, transparent);
+                          }
+                          .of-tx-label {
+                            opacity: 0.78;
+                            font-size: 0.9rem;
+                          }
+                          .of-tx-badge {
+                            background: #5ba4d9;
+                            color: #fff;
+                            border-radius: 5px;
+                            padding: 3px 9px;
+                            font-weight: 600;
+                            font-size: 0.85rem;
+                            white-space: nowrap;
+                          }
+                          .of-tx-chip {
+                            background: #22c55e;
+                            color: #fff;
+                            border-radius: 8px;
+                            padding: 4px 10px;
+                            font-weight: 600;
+                            font-size: 0.82rem;
+                            white-space: nowrap;
+                          }
+                          .of-tx-text, .of-tx-note-text {
+                            text-align: right;
+                            opacity: 0.9;
+                          }
+                          .of-tx-note-text { font-style: italic; }
 
   # ─── Calendrier ────────────────────────────────────────────────
   # calendar exige des entity_id string ; auto-entities les wrap en {entity:…}
