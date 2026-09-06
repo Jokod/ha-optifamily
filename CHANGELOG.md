@@ -7,6 +7,18 @@ et ce projet adhère au [Versionnement Sémantique](https://semver.org/lang/fr/)
 
 ## [Unreleased]
 
+## [1.1.4] - 2026-09-06
+
+### Fixed
+- Calendrier famille : `entity_id` en minuscules (`entry_id` HA peut contenir des majuscules — warning HA 2027.2)
+
+### Changed
+- Nettoyage : `getattr` inutiles documents/crèche, blueprints messages simplifiés, imports calendar
+
+### Migration 1.1.3 → 1.1.4
+1. Mettre à jour HACS → redémarrer HA
+2. Si l’ancienne entité `calendar.optifamily_planning_01M…` (majuscules) reste orpheline, la supprimer du registre
+
 ## [1.1.3] - 2026-09-06
 
 ### Added

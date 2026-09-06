@@ -73,6 +73,10 @@ sequence:
         {{ liste | selectattr('presence', 'equalto', 'présent')
                  | map(attribute='libelle') | list }}
       unread: "{{ states(messages_entity) | int(0) }}"
+      origine_raw: "{{ state_attr(messages_entity, 'origine') | default('') }}"
+      origine: >
+        {{ 'Moi' if origine_raw == 'moi'
+           else ('Crèche' if origine_raw == 'creche' else (origine_raw or '?')) }}
       transmissions_total: >
         {{ liste | map(attribute='transmissions') | map('int', 0) | sum }}
       phase_lib: >
@@ -92,9 +96,7 @@ sequence:
         Phase : {{ phase_lib }}
         {% endif %}
         Présents : {{ presents | join(', ') if presents else 'aucun' }}
-        Messages non lus ({{ 'Moi' if state_attr(messages_entity, 'origine') == 'moi'
-          else ('Crèche' if state_attr(messages_entity, 'origine') == 'creche'
-          else (state_attr(messages_entity, 'origine') | default('?'))) }}) : {{ unread }}
+        Messages non lus ({{ origine }}) : {{ unread }}
         Transmissions du jour : {{ transmissions_total }}
         {% endif %}
   - action: !input notify_action

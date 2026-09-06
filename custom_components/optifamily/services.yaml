@@ -6,7 +6,7 @@ set_transmissions_date:
   fields:
     date:
       name: Date
-      description: Jour au format YYYY-MM-DD (omit = aujourd'hui)
+      description: Jour au format YYYY-MM-DD (défaut : aujourd'hui)
       required: false
       selector:
         date:

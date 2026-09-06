@@ -65,11 +65,10 @@ action:
         {{ 'Moi' if origine_raw == 'moi'
            else ('Crèche' if origine_raw == 'creche' else (origine_raw or 'inconnu')) }}
       last_date: >
-        {{ state_attr(messages_entity, 'last_unread_date_fr')
+        {{ (state_attr(messages_entity, 'last_unread_date_fr')
            or state_attr(messages_entity, 'last_message_date_fr')
            or state_attr(messages_entity, 'last_unread_date')
-           or state_attr(messages_entity, 'last_message_date')
-           | default('n/a') }}
+           or state_attr(messages_entity, 'last_message_date')) or 'n/a' }}
   - action: !input notify_action
     data:
       title: "OptiFamily — Messages"

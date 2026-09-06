@@ -406,7 +406,7 @@ views:
                 - type: template
                   icon: mdi:calendar
                   content: >
-                    {% set j = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind')
+                    {% set j = states.sensor
                       | selectattr('attributes.optifamily_kind', 'eq', 'transmissions_journal') | list %}
                     {{ (j[0].attributes.date_label if j else none)
                        or (j[0].attributes.date_fr if j else none)
@@ -415,7 +415,7 @@ views:
                 - type: template
                   icon: mdi:calendar-today
                   icon_color: >
-                    {% set j = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind')
+                    {% set j = states.sensor
                       | selectattr('attributes.optifamily_kind', 'eq', 'transmissions_journal') | list %}
                     {% set d = j[0].attributes.date if j else none %}
                     {{ 'teal' if d and d != now().date().isoformat() else 'green' }}

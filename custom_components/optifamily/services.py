@@ -131,8 +131,8 @@ def _find_download_candidate(
     pools: list[Any] = []
     if kind == "document":
         pools.extend(data.documents or [])
-        pools.extend(getattr(data, "documents_famille", None) or [])
-        for vals in (getattr(data, "documents_enfant", None) or {}).values():
+        pools.extend(data.documents_famille or [])
+        for vals in (data.documents_enfant or {}).values():
             pools.extend(vals or [])
     elif kind == "facture":
         pools.extend(data.facturation or [])

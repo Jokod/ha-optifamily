@@ -13,7 +13,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import CONF_CRECHE_NAME, DOMAIN
+from .const import CONF_CRECHE_ID, CONF_CRECHE_NAME, DOMAIN
 from .coordinator import OptieFamilyCoordinator
 from .devices import async_get_or_create_hub_device_id
 from .models import Enfant, iter_year_months, planning_to_events
@@ -27,7 +27,7 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Configure un calendrier par enfant."""
+    """Configure le calendrier famille et un calendrier par enfant."""
     coordinator: OptieFamilyCoordinator = entry.runtime_data
     via_device_id = async_get_or_create_hub_device_id(hass, entry)
     entities: list[CalendarEntity] = [
@@ -68,7 +68,7 @@ class OptieFamilyFamilyCalendar(CoordinatorEntity[OptieFamilyCoordinator], Calen
         super().__init__(coordinator)
         self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_planning_calendar_family"
-        self.entity_id = f"calendar.optifamily_planning_{entry.entry_id[:8]}"
+        self.entity_id = f"calendar.optifamily_planning_{entry.entry_id[:8].lower()}"
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -82,8 +82,6 @@ class OptieFamilyFamilyCalendar(CoordinatorEntity[OptieFamilyCoordinator], Calen
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        from .const import CONF_CRECHE_ID, CONF_CRECHE_NAME
-
         return {
             "optifamily_kind": "planning_family",
             "config_entry_id": self._entry.entry_id,

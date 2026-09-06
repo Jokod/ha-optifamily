@@ -56,6 +56,12 @@ async def test_calendar_setup_and_events(
     assert family.extra_state_attributes["optifamily_kind"] == "planning_family"
     assert family.entity_id.startswith("calendar.optifamily_planning_")
 
+    entry_mixed_case = MagicMock()
+    entry_mixed_case.entry_id = "01M1M63HABCDEF"
+    entry_mixed_case.data = {}
+    family_case = calendar_mod.OptieFamilyFamilyCalendar(coordinator, entry_mixed_case)
+    assert family_case.entity_id == "calendar.optifamily_planning_01m1m63h"
+
     start = datetime.combine(today - timedelta(days=1), datetime.min.time(), tzinfo=UTC)
     end = datetime.combine(today + timedelta(days=2), datetime.min.time(), tzinfo=UTC)
     family_events = await family.async_get_events(hass, start, end)
@@ -64,8 +70,8 @@ async def test_calendar_setup_and_events(
     naive_end = datetime.combine(today + timedelta(days=2), datetime.min.time())
     naive_events = await family.async_get_events(hass, naive_start, naive_end)
     assert naive_events
-    mixed = calendar_mod._aware(datetime(2026, 1, 1, 8, 0))
-    assert mixed.tzinfo is not None
+    aware_naive = calendar_mod._aware(datetime(2026, 1, 1, 8, 0))
+    assert aware_naive.tzinfo is not None
     already = calendar_mod._aware(datetime(2026, 1, 1, 8, 0, tzinfo=UTC))
     assert already.tzinfo is UTC
     assert family_events

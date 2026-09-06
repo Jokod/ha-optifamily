@@ -126,7 +126,7 @@ def _documents_for_scope(coordinator: OptieFamilyCoordinator) -> tuple[str, int 
     if not data:
         return scope, enfant_id, []
     if scope == DOCUMENTS_SCOPE_FAMILLE:
-        return scope, None, list(getattr(data, "documents_famille", None) or [])
+        return scope, None, list(data.documents_famille or [])
     if scope == DOCUMENTS_SCOPE_ENFANT:
         if enfant_id is None:
             entry = getattr(coordinator, "entry", None)
@@ -139,7 +139,7 @@ def _documents_for_scope(coordinator: OptieFamilyCoordinator) -> tuple[str, int 
         return (
             scope,
             int(enfant_id),
-            list((getattr(data, "documents_enfant", None) or {}).get(int(enfant_id), [])),
+            list((data.documents_enfant or {}).get(int(enfant_id), [])),
         )
     return DOCUMENTS_SCOPE_CRECHE, None, list(data.documents or [])
 
@@ -154,7 +154,7 @@ class OptieFamilySensorDescription(SensorEntityDescription):
 
 def _creche_info_attrs(data: OptieFamilyData) -> dict[str, Any]:
     """Attributs fiche crèche (endpoint /creche)."""
-    raw = data.creche if isinstance(getattr(data, "creche", None), dict) else {}
+    raw = data.creche if isinstance(data.creche, dict) else {}
     collabs = raw.get("collaborateurs") if isinstance(raw.get("collaborateurs"), list) else []
     photos = raw.get("photos") if isinstance(raw.get("photos"), list) else []
     return {
@@ -236,18 +236,15 @@ GLOBAL_SENSORS: tuple[OptieFamilySensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda d: (
             len(d.documents)
-            + len(getattr(d, "documents_famille", None) or [])
-            + sum(len(v) for v in (getattr(d, "documents_enfant", None) or {}).values())
+            + len(d.documents_famille or [])
+            + sum(len(v) for v in (d.documents_enfant or {}).values())
         ),
         attributes_fn=lambda d: {
             "creche": len(d.documents),
-            "famille": len(getattr(d, "documents_famille", None) or []),
-            "enfants": {
-                str(eid): len(items)
-                for eid, items in (getattr(d, "documents_enfant", None) or {}).items()
-            },
+            "famille": len(d.documents_famille or []),
+            "enfants": {str(eid): len(items) for eid, items in (d.documents_enfant or {}).items()},
             "items_creche": normalize_document_items(d.documents),
-            "items_famille": normalize_document_items(getattr(d, "documents_famille", None)),
+            "items_famille": normalize_document_items(d.documents_famille),
         },
     ),
     OptieFamilySensorDescription(
@@ -542,10 +539,11 @@ class OptieFamilyDocumentsSensor(_OptieFamilyBaseSensor):
     def extra_state_attributes(self) -> dict[str, Any]:
         scope, enfant_id, items = _documents_for_scope(self.coordinator)
         data = self.coordinator.data
-        enfants_counts = {
-            str(eid): len(vals)
-            for eid, vals in (getattr(data, "documents_enfant", None) or {}).items()
-        }
+        enfants_counts = (
+            {str(eid): len(vals) for eid, vals in (data.documents_enfant or {}).items()}
+            if data
+            else {}
+        )
         enfant_libelle = None
         if scope == DOCUMENTS_SCOPE_ENFANT and enfant_id is not None:
             for enfant in _get_enfants(self.coordinator, self._entry):
@@ -560,8 +558,8 @@ class OptieFamilyDocumentsSensor(_OptieFamilyBaseSensor):
             "enfant_libelle": enfant_libelle,
             "counts": {
                 "creche": len(data.documents) if data else 0,
-                "famille": len(getattr(data, "documents_famille", None) or []) if data else 0,
-                "enfants": enfants_counts if data else {},
+                "famille": len(data.documents_famille or []) if data else 0,
+                "enfants": enfants_counts,
             },
             "items": normalize_document_items(items),
             CONF_DOCUMENTS_SCOPE: scope,

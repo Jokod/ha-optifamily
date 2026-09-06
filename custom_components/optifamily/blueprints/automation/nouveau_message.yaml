@@ -65,21 +65,11 @@ action:
       origine: >
         {{ 'Moi' if origine_raw == 'moi'
            else ('Crèche' if origine_raw == 'creche' else (origine_raw or 'inconnu')) }}
-  - choose:
-      - conditions:
-          - condition: template
-            value_template: "{{ last_date is not none and last_date not in ['', 'None', none] }}"
-        sequence:
-          - action: !input notify_action
-            data:
-              title: "OptiFamily"
-              message: >
-                {{ unread_count }} message(s) non lu(s) ({{ origine }}).
-                Dernier message : {{ last_date }}.
-    default:
-      - action: !input notify_action
-        data:
-          title: "OptiFamily"
-          message: "{{ unread_count }} message(s) non lu(s) ({{ origine }})."
+  - action: !input notify_action
+    data:
+      title: "OptiFamily"
+      message: >
+        {{ unread_count }} message(s) non lu(s) ({{ origine }}).
+        {% if last_date not in [none, '', 'None'] %}Dernier message : {{ last_date }}.{% endif %}
 
 mode: single
