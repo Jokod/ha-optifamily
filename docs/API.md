@@ -21,7 +21,7 @@
 | Format | JSON |
 | Mode intégration HA | **Lecture seule** |
 
-Objectifs couverts : compte, enfants, planning, transmissions, albums, actualités, messages, documents, facturation.
+Objectifs couverts : compte, enfants, planning, transmissions, albums, actualités, messages, crèche, documents, facturation.
 
 ---
 
@@ -185,6 +185,7 @@ Sans body, le backend répond `400` :
 | `GET` | `/api/auth/v3/opti-family/enfant/{id}/albums` | ✅ Bearer | ✅ Observé |
 | `GET` | `/api/auth/v3/opti-family/actualites/from/{from}/to/{to}` | ✅ Bearer | ✅ Observé |
 | `GET` | `/api/auth/v3/opti-family/messages` | ✅ Bearer | ✅ Observé |
+| `GET` | `/api/auth/v3/opti-family/creche` | ✅ Bearer | ✅ Observé |
 | `GET` | `/api/auth/v3/opti-family/documents/creche/{crecheId}` | ✅ Bearer | ✅ Observé |
 | `GET` | `/api/auth/v3/opti-family/documents/famille/{familleId}` | ✅ Bearer | ✅ Observé |
 | `GET` | `/api/auth/v3/opti-family/documents/enfant/{enfantId}` | ✅ Bearer | ✅ Observé |
@@ -330,6 +331,22 @@ Champs observés (exemple) :
 |---|---|
 | `sender` | `true` si envoyé par l’utilisateur connecté |
 | `vu` | Message lu ou non |
+
+### `GET /api/auth/v3/opti-family/creche`
+
+Fiche structure (coordonnées).
+
+```json
+{
+  "nom": "NOM_CRECHE",
+  "adresse": "ADRESSE",
+  "telephone": "TELEPHONE",
+  "email": "EMAIL",
+  "description": null,
+  "photos": [],
+  "collaborateurs": []
+}
+```
 
 ### `GET /api/auth/v3/opti-family/documents/creche/{crecheId}`
 

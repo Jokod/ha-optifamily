@@ -14,6 +14,7 @@ from .const import (
     API_ACTUALITES,
     API_ALBUMS,
     API_BASE_URL,
+    API_CRECHE,
     API_DOCUMENTS,
     API_DOCUMENTS_ENFANT,
     API_DOCUMENTS_FAMILLE,
@@ -333,6 +334,10 @@ class OptieFamilyApiClient:
     async def get_messages(self) -> list[dict[str, Any]]:
         """Retourne les messages de la famille."""
         return _as_list(await self._request("GET", API_MESSAGES))
+
+    async def get_creche(self) -> dict[str, Any]:
+        """Retourne les informations de la crèche (coordonnées, description)."""
+        return _as_dict(await self._request("GET", API_CRECHE))
 
     async def get_documents(self, creche_id: int | None = None) -> list[dict[str, Any]]:
         """Retourne les documents de la crèche."""

@@ -16,8 +16,7 @@ def test_install_theme_sync_copies_yaml(hass: MagicMock, tmp_path: Path) -> None
     assert dest.is_file()
     text = dest.read_text()
     assert "ha-view-sections-column-max-width" in text
-    assert "optifamily-accent" in text
-    assert "optifamily-radius" in text
+    assert "optifamily-accent" not in text
 
 
 def test_install_theme_missing_source(hass: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:

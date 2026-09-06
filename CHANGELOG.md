@@ -7,6 +7,30 @@ et ce projet adhère au [Versionnement Sémantique](https://semver.org/lang/fr/)
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-09-06
+
+### Added
+- Capteur **Messages** : fil chronologique complet (vous ↔ crèche)
+- Capteur **Crèche** : fiche structure via `GET /opti-family/creche` (adresse, téléphone, email, collaborateurs)
+- Dashboard : onglet **Planning** = calendrier mois HA ; onglet **Messages** ; fiche crèche dans **Infos**
+- Service `optifamily.refresh` + bouton **Synchroniser** (Accueil)
+- Messages d’état vide quand une section n’a pas de données
+
+### Changed
+- Thème `optifamily` **neutre** (plus de palette claire / fonds forcés — couleurs HA par défaut)
+- Planning dashboard : calendrier mensuel natif (plus de `week-planner-card`)
+
+### Fixed
+- Journal / planning : au changement de jour civil, date du jour forcée (même en pause nocturne)
+- Messages UI : titre = aperçu du corps (plus de `message 123`)
+- Actualités UI : affichage du champ `resume`
+
+### Migration 1.1.0 → 1.1.1
+1. Mettre à jour HACS → redémarrer HA
+2. Recharger les thèmes (thème neutre)
+3. Remplacer/re-importer le dashboard `dashboards/optifamily.yaml`
+4. `week-planner-card` n’est plus requis pour OptiFamily
+
 ## [1.1.0] - 2026-09-05
 
 ### Added

@@ -89,6 +89,7 @@ class OptieFamilyData:
     __slots__ = (
         "actualites",
         "albums",
+        "creche",
         "documents",
         "documents_enfant",
         "documents_famille",
@@ -109,6 +110,7 @@ class OptieFamilyData:
         self.albums: dict[int, list[dict[str, Any]]] = {}
         self.actualites: dict[str, Any] = {}
         self.messages: list[dict[str, Any]] = []
+        self.creche: dict[str, Any] = {}
         self.documents: list[dict[str, Any]] = []
         self.documents_famille: list[dict[str, Any]] = []
         self.documents_enfant: dict[int, list[dict[str, Any]]] = {}
@@ -142,6 +144,8 @@ class OptieFamilyCoordinator(DataUpdateCoordinator[OptieFamilyData]):
         self.known_calendar_enfant_ids: set[int] = set()
         self._planning_cache: dict[tuple[int, int, int], _PlanningCacheEntry] = {}
         self._planning_inflight: dict[tuple[int, int, int], asyncio.Task[dict[str, Any]]] = {}
+        self._data_day: date | None = None
+        self._force_refresh: bool = False
         self.transmissions_view_date: date = date.today()
         self.transmissions_journal: dict[int, list[dict[str, Any]]] = {}
         self.documents_scope: str = DOCUMENTS_SCOPE_CRECHE
@@ -315,6 +319,11 @@ class OptieFamilyCoordinator(DataUpdateCoordinator[OptieFamilyData]):
                 sorted(excluded),
             )
 
+    async def async_request_sync(self) -> None:
+        """Force un rafraîchissement API immédiat (ignore la pause nocturne / fermeture)."""
+        self._force_refresh = True
+        await self.async_request_refresh()
+
     async def async_set_documents_scope(self, scope: str, enfant_id: int | None = None) -> None:
         """Change le scope documents affiché (dashboard select)."""
         if scope not in DOCUMENTS_SCOPES:
@@ -329,7 +338,19 @@ class OptieFamilyCoordinator(DataUpdateCoordinator[OptieFamilyData]):
 
     async def _async_update_data(self) -> OptieFamilyData:
         """Méthode appelée automatiquement par HA toutes les N secondes."""
-        if self.data is not None:
+        today = date.today()
+        force = self._force_refresh
+        self._force_refresh = False
+        day_changed = self._data_day is not None and self._data_day != today
+        if day_changed:
+            # Nouveau jour civil : journal + planning doivent suivre la date du jour.
+            self.transmissions_view_date = today
+            _LOGGER.debug(
+                "Changement de jour OptiFamily (%s → %s) — rafraîchissement forcé",
+                self._data_day,
+                today,
+            )
+        elif not force and self.data is not None:
             reason = self._pause_reason()
             if reason:
                 _LOGGER.debug("Pause de mise à jour OptiFamily : %s", reason)
@@ -337,7 +358,6 @@ class OptieFamilyCoordinator(DataUpdateCoordinator[OptieFamilyData]):
 
         result = OptieFamilyData()
         result.persisted_enfants = list(self.entry.data.get(CONF_ENFANTS, []))
-        today = date.today()
 
         try:
             result.me = await self.client.get_me()
@@ -383,6 +403,11 @@ class OptieFamilyCoordinator(DataUpdateCoordinator[OptieFamilyData]):
 
             result.actualites = await self.client.get_actualites(0, 20)
             result.messages = await self.client.get_messages()
+            try:
+                result.creche = await self.client.get_creche()
+            except Exception as err:
+                _LOGGER.warning("Impossible de récupérer les infos crèche : %s", err)
+                result.creche = {}
             result.documents = await self.client.get_documents()
             famille_id = _famille_id_from_me(result.me)
             if famille_id is not None:
@@ -422,6 +447,7 @@ class OptieFamilyCoordinator(DataUpdateCoordinator[OptieFamilyData]):
             )
 
         self.last_sync_at = datetime.now(UTC)
+        self._data_day = today
         if self.transmissions_view_date == today:
             self.transmissions_journal = {
                 eid: list(items) for eid, items in result.transmissions.items()

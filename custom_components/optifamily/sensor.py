@@ -77,9 +77,18 @@ def _unread_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [m for m in messages if not m.get("vu", True)]
 
 
+def _sorted_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Messages triés du plus récent au plus ancien (clé date API)."""
+    return sorted(
+        messages,
+        key=lambda m: str(m.get("date") or ""),
+        reverse=True,
+    )
+
+
 def _message_sensor_attrs(data: OptieFamilyData, *, from_me: bool) -> dict[str, Any]:
     """Attributs pour un capteur messages (parent ou crèche)."""
-    subset = _messages_from_sender(data.messages, from_me=from_me)
+    subset = _sorted_messages(_messages_from_sender(data.messages, from_me=from_me))
     unread = _unread_messages(subset)
     return {
         "origine": "moi" if from_me else "creche",
@@ -88,6 +97,20 @@ def _message_sensor_attrs(data: OptieFamilyData, *, from_me: bool) -> dict[str, 
         "last_message_date": subset[0].get("date") if subset else None,
         "last_unread_date": unread[0].get("date") if unread else None,
         "items": normalize_message_items(subset),
+    }
+
+
+def _messages_thread_attrs(data: OptieFamilyData) -> dict[str, Any]:
+    """Fil de discussion chronologique (tous expéditeurs)."""
+    thread = _sorted_messages(list(data.messages or []))
+    unread = _unread_messages(thread)
+    return {
+        "total": len(thread),
+        "non_lus": len(unread),
+        "non_lus_creche": len(_unread_messages(_messages_from_sender(thread, from_me=False))),
+        "non_lus_moi": len(_unread_messages(_messages_from_sender(thread, from_me=True))),
+        "last_message_date": thread[0].get("date") if thread else None,
+        "items": normalize_message_items(thread, limit=40),
     }
 
 
@@ -116,6 +139,24 @@ class OptieFamilySensorDescription(SensorEntityDescription):
     attributes_fn: Callable[[OptieFamilyData], dict[str, Any]] | None = None
 
 
+def _creche_info_attrs(data: OptieFamilyData) -> dict[str, Any]:
+    """Attributs fiche crèche (endpoint /creche)."""
+    raw = data.creche if isinstance(getattr(data, "creche", None), dict) else {}
+    collabs = raw.get("collaborateurs") if isinstance(raw.get("collaborateurs"), list) else []
+    photos = raw.get("photos") if isinstance(raw.get("photos"), list) else []
+    return {
+        "nom": raw.get("nom") or "",
+        "adresse": raw.get("adresse") or "",
+        "telephone": raw.get("telephone") or "",
+        "email": raw.get("email") or "",
+        "description": raw.get("description") or "",
+        "photos": photos,
+        "photos_count": len(photos),
+        "collaborateurs": collabs,
+        "collaborateurs_count": len(collabs),
+    }
+
+
 GLOBAL_SENSORS: tuple[OptieFamilySensorDescription, ...] = (
     OptieFamilySensorDescription(
         key="enfants",
@@ -132,6 +173,21 @@ GLOBAL_SENSORS: tuple[OptieFamilySensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda d: None,
         attributes_fn=None,
+    ),
+    OptieFamilySensorDescription(
+        key="creche",
+        name="Crèche",
+        icon="mdi:town-hall",
+        value_fn=lambda d: (d.creche or {}).get("nom") or "—",
+        attributes_fn=_creche_info_attrs,
+    ),
+    OptieFamilySensorDescription(
+        key="messages",
+        name="Messages",
+        icon="mdi:forum-outline",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda d: len(d.messages or []),
+        attributes_fn=_messages_thread_attrs,
     ),
     OptieFamilySensorDescription(
         key="messages_unread_creche",

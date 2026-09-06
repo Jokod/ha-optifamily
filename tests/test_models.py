@@ -446,9 +446,47 @@ def test_normalize_downloadable_and_lists() -> None:
     )
     assert normalize_actualite_items({"actualites": [{"libelle": "A"}]})[0]["titre"] == "A"
 
-    msgs = [{"id": i, "message": "m"} for i in range(10)]
-    assert len(normalize_message_items(msgs, limit=3)) == 3
+    msgs = [
+        {
+            "id": 795489,
+            "sender": True,
+            "message": "Bonjour",
+            "date": "2026-09-03 17:02:13",
+            "vu": True,
+        },
+        {
+            "id": 796399,
+            "sender": True,
+            "message": "Bonjour Elise,\nNous avons bien reçu les transmissions.",
+            "date": "2026-09-06 15:41:42",
+            "vu": False,
+        },
+    ]
+    normalized = normalize_message_items(msgs, limit=3)
+    assert len(normalized) == 2
+    assert normalized[0]["titre"] == "Bonjour"
+    assert normalized[0]["origine"] == "Vous"
+    assert "Bonjour Elise" in normalized[1]["titre"]
+    assert normalized[1]["vu"] is False
     assert normalize_message_items(None) == []
+    long = "x" * 100
+    truncated = normalize_message_items(
+        [{"id": 1, "sender": False, "message": long, "vu": True}], limit=1
+    )[0]
+    assert truncated["titre"].endswith("…")
+    assert len(truncated["titre"]) == 70
+    assert truncated["origine"] == "Crèche"
+    assert (
+        len(
+            normalize_message_items(
+                [{"id": i, "message": "m"} for i in range(10)] + ["bad"],
+                limit=3,
+            )
+        )
+        == 3
+    )
+    empty = normalize_message_items([{"id": 2, "sender": True, "message": "", "vu": True}])[0]
+    assert empty["titre"] == "Vous"
 
 
 def _pick_via_normalize_id_skip() -> bool:

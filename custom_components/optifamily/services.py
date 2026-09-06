@@ -23,6 +23,7 @@ SERVICE_SET_TRANSMISSIONS_DATE = "set_transmissions_date"
 SERVICE_SHIFT_TRANSMISSIONS_DATE = "shift_transmissions_date"
 SERVICE_SET_DOCUMENTS_SCOPE = "set_documents_scope"
 SERVICE_DOWNLOAD = "download"
+SERVICE_REFRESH = "refresh"
 
 _SAFE_NAME = re.compile(r"[^a-zA-Z0-9._-]+")
 
@@ -52,6 +53,11 @@ _DOWNLOAD_SCHEMA = vol.Schema(
         vol.Optional("config_entry_id"): cv.string,
         vol.Optional("enfant_id"): vol.Coerce(int),
         vol.Optional("download_url"): cv.string,
+    }
+)
+_REFRESH_SCHEMA = vol.Schema(
+    {
+        vol.Optional("config_entry_id"): cv.string,
     }
 )
 
@@ -227,6 +233,17 @@ async def _async_download(call: ServiceCall) -> None:
     )
 
 
+async def _async_refresh(call: ServiceCall) -> None:
+    """Demande une synchronisation API immédiate."""
+    entry_id = call.data.get("config_entry_id")
+    targets = _coordinators(call.hass, entry_id)
+    if not targets:
+        _LOGGER.warning("Aucun coordinator OptiFamily pour refresh")
+        return
+    for _entry, coordinator in targets:
+        await coordinator.async_request_sync()
+
+
 @callback
 def async_setup_services(hass: HomeAssistant) -> None:
     """Enregistre les services une seule fois."""
@@ -256,6 +273,12 @@ def async_setup_services(hass: HomeAssistant) -> None:
         _async_download,
         schema=_DOWNLOAD_SCHEMA,
     )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_REFRESH,
+        _async_refresh,
+        schema=_REFRESH_SCHEMA,
+    )
 
 
 @callback
@@ -268,6 +291,7 @@ def async_unload_services(hass: HomeAssistant) -> None:
         SERVICE_SHIFT_TRANSMISSIONS_DATE,
         SERVICE_SET_DOCUMENTS_SCOPE,
         SERVICE_DOWNLOAD,
+        SERVICE_REFRESH,
     ):
         if hass.services.has_service(DOMAIN, name):
             hass.services.async_remove(DOMAIN, name)

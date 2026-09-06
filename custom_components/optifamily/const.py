@@ -44,6 +44,7 @@ API_TRANSMISSIONS = "/api/auth/v3/opti-family/enfant/{enfant_id}/transmissions/{
 API_ALBUMS = "/api/auth/v3/opti-family/enfant/{enfant_id}/albums"
 API_ACTUALITES = "/api/auth/v3/opti-family/actualites/from/{from_}/to/{to}"
 API_MESSAGES = "/api/auth/v3/opti-family/messages"
+API_CRECHE = "/api/auth/v3/opti-family/creche"
 API_DOCUMENTS = "/api/auth/v3/opti-family/documents/creche/{creche_id}"
 API_DOCUMENTS_FAMILLE = "/api/auth/v3/opti-family/documents/famille/{famille_id}"
 API_DOCUMENTS_ENFANT = "/api/auth/v3/opti-family/documents/enfant/{enfant_id}"

@@ -156,6 +156,10 @@ async def test_endpoints(api_client: OptieFamilyApiClient) -> None:
             payload={"total": 1},
         )
         mocked.get(
+            _url("/api/auth/v3/opti-family/creche"),
+            payload={"nom": "Les Petits", "adresse": "1 rue A"},
+        )
+        mocked.get(
             _url("/api/auth/v3/opti-family/documents/creche/1001"),
             payload=[{"id": 1}],
         )
@@ -166,6 +170,7 @@ async def test_endpoints(api_client: OptieFamilyApiClient) -> None:
         assert len(await api_client.get_transmissions(2001, date(2026, 9, 3))) == 1
         assert len(await api_client.get_albums(2001)) == 1
         assert (await api_client.get_actualites())["total"] == 1
+        assert (await api_client.get_creche())["nom"] == "Les Petits"
         assert len(await api_client.get_documents()) == 1
         assert await api_client.get_facturation() == []
 

@@ -100,3 +100,16 @@ download:
       required: false
       selector:
         text:
+
+refresh:
+  name: Synchroniser
+  description: >
+    Force un rafraîchissement immédiat des données OptiFamily
+    (ignore la pause nocturne / crèche fermée).
+  fields:
+    config_entry_id:
+      name: Entrée OptiFamily (optionnel)
+      description: Si plusieurs crèches, précisez l'entry_id
+      required: false
+      selector:
+        text:

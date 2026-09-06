@@ -177,6 +177,7 @@ class OptieFamilyChildCalendar(CoordinatorEntity[OptieFamilyCoordinator], Calend
             "optifamily_kind": "planning",
             "enfant_id": self._enfant.id,
             "enfant_libelle": self._enfant.libelle,
+            "config_entry_id": self._entry.entry_id,
         }
 
     @property

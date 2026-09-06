@@ -105,8 +105,10 @@ Puis redémarrez Home Assistant.
 | Phase journée | `maison` · `deposer` · `creche` · `chercher` · `rentre` · `ferme` · `inconnu` |
 | Résumé journée | Message FR contextuel (hero dashboard) |
 | Attention | Binary sensor « problème » si messages non lus ou dépôt/récupération ≤ 90 min |
+| Messages | Fil de discussion complet (`items[]` chronologique) |
 | Messages non lus (crèche) | Messages reçus + `items[]` (corps) |
 | Messages non lus (moi) | Messages envoyés encore non lus |
+| Crèche | Fiche structure (`/creche` : adresse, téléphone, email…) |
 | Actualités / Documents / Factures | Compteurs + `items[]` riches (téléchargement docs/factures) |
 
 ### Par enfant (un appareil Home Assistant chacun)
@@ -161,8 +163,8 @@ Import : **Paramètres → Tableaux de bord → Ajouter → Importer YAML**.
 Les cartes détectent l’intégration automatiquement (`optifamily_kind`).
 En multi-crèche : **un dashboard par entry** (filtre `config_entry_id`).
 
-Les vues sont en **panel plein largeur**. Le thème `optifamily` (tokens
-`--optifamily-*` pour card-mod) est **copié automatiquement** dans `config/themes/`.
+Les vues sont en **panel plein largeur**. Le thème `optifamily` est **neutre**
+(layout sections uniquement — **aucune couleur forcée** ; le thème HA s’applique).
 Une fois : `frontend:` → `themes: !include_dir_merge_named themes` dans
 `configuration.yaml`, puis recharger les thèmes.
 
@@ -173,14 +175,14 @@ Cartes Lovelace HACS à installer **à la main** (HACS → Frontend). L’intég
 | Mushroom | [lovelace-mushroom](https://github.com/piitaya/lovelace-mushroom) |
 | card-mod | [lovelace-card-mod](https://github.com/thomasloven/lovelace-card-mod) |
 | auto-entities | [lovelace-auto-entities](https://github.com/thomasloven/lovelace-auto-entities) |
-| week-planner-card | [week-planner-card](https://github.com/FamousWolf/week-planner-card) |
 | layout-card (mod-card) | [lovelace-layout-card](https://github.com/thomasloven/lovelace-layout-card) |
 
-Onglets : **Accueil**, **Enfants**, **Transmissions**, **Médias** (albums + documents), **Infos** (actualités / factures / messages). Sans ces plugins, l’import affiche « custom element doesn’t exist ».
+Onglets : **Accueil**, **Enfants**, **Planning** (calendrier mois HA), **Transmissions**, **Messages**, **Médias**, **Infos** (fiche crèche / actualités / factures).
 
 Services : `optifamily.set_transmissions_date` / `shift_transmissions_date`,
 `optifamily.set_documents_scope` (`creche` \| `famille` \| `enfant`),
-`optifamily.download` (photo / document / facture → `/local/optifamily/...`).
+`optifamily.download` (photo / document / facture → `/local/optifamily/...`),
+`optifamily.refresh` (sync API immédiate, ignore la pause).
 
 
 ### Package helpers (optionnel)

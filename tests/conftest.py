@@ -99,6 +99,9 @@ def _ensure_ha_stubs() -> None:
         def async_update_listeners(self) -> None:
             return None
 
+        async def async_request_refresh(self) -> None:
+            self.data = await self._async_update_data()
+
     class _ConfigFlow:
         def __init_subclass__(cls, *, domain: str | None = None, **kwargs: Any) -> None:
             super().__init_subclass__(**kwargs)

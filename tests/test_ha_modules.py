@@ -307,6 +307,7 @@ async def test_coordinator_tokens_and_update(hass: MagicMock) -> None:
     client.get_albums = AsyncMock(return_value=[])
     client.get_actualites = AsyncMock(return_value={"total": 0})
     client.get_messages = AsyncMock(return_value=[])
+    client.get_creche = AsyncMock(return_value={})
     client.get_documents = AsyncMock(return_value=[])
     client.get_documents_famille = AsyncMock(return_value=[])
     client.get_documents_enfant = AsyncMock(return_value=[])
@@ -401,6 +402,7 @@ async def test_coordinator_update_partial_and_failures(hass: MagicMock) -> None:
     client.get_albums = AsyncMock(side_effect=RuntimeError("a"))
     client.get_actualites = AsyncMock(return_value={})
     client.get_messages = AsyncMock(return_value=[])
+    client.get_creche = AsyncMock(return_value={})
     client.get_documents = AsyncMock(return_value=[])
     client.get_documents_famille = AsyncMock(return_value=[])
     client.get_documents_enfant = AsyncMock(return_value=[])
@@ -549,6 +551,27 @@ async def test_sensors(planning_present: dict, today: date, hass: MagicMock) -> 
     by_key = {d.key: d for d in sensor_mod.GLOBAL_SENSORS}
     assert by_key["messages_unread_creche"].value_fn(mixed) == 1
     assert by_key["messages_unread_me"].value_fn(mixed) == 1
+    assert by_key["messages"].value_fn(mixed) == 3
+    thread = by_key["messages"].attributes_fn(mixed)
+    assert thread["total"] == 3
+    assert thread["non_lus"] == 2
+    assert thread["non_lus_creche"] == 1
+    assert thread["non_lus_moi"] == 1
+    assert thread["last_message_date"] == "2026-01-03"
+    creche_data = OptieFamilyData()
+    creche_data.creche = {
+        "nom": "Les Petits",
+        "adresse": "1 rue Test",
+        "telephone": "0102030405",
+        "email": "contact@example.fr",
+        "description": None,
+        "photos": [],
+        "collaborateurs": [{"nom": "Elise"}],
+    }
+    assert by_key["creche"].value_fn(creche_data) == "Les Petits"
+    info_attrs = by_key["creche"].attributes_fn(creche_data)
+    assert info_attrs["adresse"] == "1 rue Test"
+    assert info_attrs["collaborateurs_count"] == 1
     creche_attrs = by_key["messages_unread_creche"].attributes_fn(mixed)
     me_attrs = by_key["messages_unread_me"].attributes_fn(mixed)
     assert creche_attrs["origine"] == "creche"
@@ -1135,6 +1158,7 @@ async def test_coordinator_skips_disabled_enfants_polling(hass: MagicMock) -> No
     client.get_albums = AsyncMock(return_value=[])
     client.get_actualites = AsyncMock(return_value={"total": 0})
     client.get_messages = AsyncMock(return_value=[])
+    client.get_creche = AsyncMock(return_value={})
     client.get_documents = AsyncMock(return_value=[])
     client.get_documents_famille = AsyncMock(return_value=[])
     client.get_documents_enfant = AsyncMock(return_value=[])

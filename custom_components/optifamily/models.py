@@ -736,11 +736,19 @@ def normalize_downloadable_item(
         item["photos"] = photos
         item["photos_count"] = len(photos_raw) if isinstance(photos_raw, list) else len(photos)
     if kind == "message":
-        item["corps"] = (
-            _pick_str(raw, "corps", "body", "contenu", "content", "message", "texte") or ""
-        )
+        corps = _pick_str(raw, "corps", "body", "contenu", "content", "message", "texte") or ""
+        sender = bool(raw.get("sender", False))
+        origine = "Vous" if sender else "Crèche"
+        preview = " ".join(corps.split())
+        if len(preview) > 72:
+            preview = preview[:69] + "…"
+        item["corps"] = corps
+        item["message"] = corps
         item["vu"] = bool(raw.get("vu", True))
-        item["sender"] = bool(raw.get("sender", False))
+        item["sender"] = sender
+        item["origine"] = origine
+        item["titre"] = preview or origine
+        item["label"] = preview or origine
         item["downloadable"] = False
         item["download_url"] = None
         item["media_id"] = None

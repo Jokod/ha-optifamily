@@ -153,6 +153,7 @@ async def test_coordinator_pause_and_journal(hass: MagicMock) -> None:
     client.get_albums = AsyncMock(return_value=[])
     client.get_actualites = AsyncMock(return_value={})
     client.get_messages = AsyncMock(return_value=[])
+    client.get_creche = AsyncMock(return_value={})
     client.get_documents = AsyncMock(return_value=[{"id": "c"}])
     client.get_documents_famille = AsyncMock(return_value=[{"id": "f"}])
     client.get_documents_enfant = AsyncMock(return_value=[{"id": "e"}])
@@ -169,6 +170,16 @@ async def test_coordinator_pause_and_journal(hass: MagicMock) -> None:
         paused = await coord._async_update_data()
     assert paused is data
     client.get_me.assert_awaited_once()
+
+    # Infos crèche : échec API → dict vide, le reste continue
+    client.get_creche = AsyncMock(side_effect=RuntimeError("creche down"))
+    client.get_me = AsyncMock(return_value={"id": 74501, "famille": {"id": 1}})
+    with (
+        patch.object(coord, "_is_in_pause_window", return_value=False),
+        patch.object(coord, "_is_creche_closed_pause", return_value=False),
+    ):
+        data2 = await coord._async_update_data()
+    assert data2.creche == {}
 
     # Pause crèche fermée (aucun créneau) — conserve le cache
     closed_day = date.today().isoformat()
@@ -238,6 +249,76 @@ async def test_coordinator_pause_and_journal(hass: MagicMock) -> None:
     assert shifted == day + timedelta(days=1)
 
 
+@pytest.mark.asyncio
+async def test_day_rollover_resets_journal_and_bypasses_pause(hass: MagicMock) -> None:
+    """Au changement de jour civil, le journal revient à today même en pause."""
+    entry = MagicMock()
+    entry.entry_id = "entry-day"
+    entry.data = {CONF_ENFANTS: [{"id": 1, "libelle": "A"}]}
+    entry.options = {CONF_PAUSE_WHEN_CLOSED: False}
+    client = MagicMock()
+    client.get_me = AsyncMock(return_value={"id": 1})
+    client.get_enfants = AsyncMock(return_value=[{"id": 1, "libelle": "A"}])
+    client.get_planning_current_month = AsyncMock(return_value={"semaines": []})
+    client.get_transmissions = AsyncMock(return_value=[{"id": "today"}])
+    client.get_albums = AsyncMock(return_value=[])
+    client.get_actualites = AsyncMock(return_value={})
+    client.get_messages = AsyncMock(return_value=[])
+    client.get_creche = AsyncMock(return_value={})
+    client.get_documents = AsyncMock(return_value=[])
+    client.get_documents_famille = AsyncMock(return_value=[])
+    client.get_documents_enfant = AsyncMock(return_value=[])
+    client.get_facturation = AsyncMock(return_value=[])
+
+    coord = OptieFamilyCoordinator(hass, client, entry)
+    yesterday = date.today() - timedelta(days=1)
+    coord._data_day = yesterday
+    coord.transmissions_view_date = yesterday
+    coord.data = OptieFamilyData()
+
+    with patch.object(coord, "_is_in_pause_window", return_value=True):
+        data = await coord._async_update_data()
+
+    assert coord.transmissions_view_date == date.today()
+    assert coord._data_day == date.today()
+    assert data.transmissions[1] == [{"id": "today"}]
+    assert coord.transmissions_journal[1] == [{"id": "today"}]
+    client.get_me.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_force_refresh_bypasses_pause(hass: MagicMock) -> None:
+    entry = MagicMock()
+    entry.entry_id = "entry-force"
+    entry.data = {CONF_ENFANTS: [{"id": 1, "libelle": "A"}]}
+    entry.options = {CONF_PAUSE_WHEN_CLOSED: False}
+    client = MagicMock()
+    client.get_me = AsyncMock(return_value={"id": 1})
+    client.get_enfants = AsyncMock(return_value=[{"id": 1, "libelle": "A"}])
+    client.get_planning_current_month = AsyncMock(return_value={"semaines": []})
+    client.get_transmissions = AsyncMock(return_value=[])
+    client.get_albums = AsyncMock(return_value=[])
+    client.get_actualites = AsyncMock(return_value={})
+    client.get_messages = AsyncMock(return_value=[])
+    client.get_creche = AsyncMock(return_value={})
+    client.get_documents = AsyncMock(return_value=[])
+    client.get_documents_famille = AsyncMock(return_value=[])
+    client.get_documents_enfant = AsyncMock(return_value=[])
+    client.get_facturation = AsyncMock(return_value=[])
+
+    coord = OptieFamilyCoordinator(hass, client, entry)
+    coord.data = OptieFamilyData()
+    coord._data_day = date.today()
+    with patch.object(coord, "_is_in_pause_window", return_value=True):
+        paused = await coord._async_update_data()
+        assert paused is coord.data
+        assert client.get_me.await_count == 0
+
+        await coord.async_request_sync()
+        assert client.get_me.await_count == 1
+        assert coord._force_refresh is False
+
+
 def test_is_in_pause_window_string_and_import_fallback(hass: MagicMock) -> None:
     entry = MagicMock()
     entry.options = {
@@ -278,15 +359,16 @@ def test_is_in_pause_window_string_and_import_fallback(hass: MagicMock) -> None:
 
 @pytest.mark.asyncio
 async def test_services_set_shift_and_unload(hass: MagicMock) -> None:
-    hass.services.has_service = MagicMock(side_effect=[False, True, True, True, True])
+    hass.services.has_service = MagicMock(side_effect=[False, True, True, True, True, True])
     services_mod.async_setup_services(hass)
-    assert hass.services.async_register.call_count == 4
+    assert hass.services.async_register.call_count == 5
     services_mod.async_setup_services(hass)  # already registered
 
     coord = MagicMock(spec=OptieFamilyCoordinator)
     coord.async_set_transmissions_view_date = AsyncMock()
     coord.async_shift_transmissions_view_date = AsyncMock()
     coord.async_set_documents_scope = AsyncMock()
+    coord.async_request_sync = AsyncMock()
     entry = MagicMock()
     entry.entry_id = "e1"
     entry.runtime_data = coord
@@ -315,10 +397,15 @@ async def test_services_set_shift_and_unload(hass: MagicMock) -> None:
     await services_mod._async_set_documents_scope(call)
     coord.async_set_documents_scope.assert_awaited()
 
+    call.data = {"config_entry_id": "e1"}
+    await services_mod._async_refresh(call)
+    coord.async_request_sync.assert_awaited()
+
     hass.config_entries.async_entries = MagicMock(return_value=[])
     await services_mod._async_set_date(MagicMock(hass=hass, data={"date": "2026-01-01"}))
     await services_mod._async_shift_date(MagicMock(hass=hass, data={"days": 1}))
     await services_mod._async_set_documents_scope(MagicMock(hass=hass, data={"scope": "creche"}))
+    await services_mod._async_refresh(MagicMock(hass=hass, data={}))
 
     hass.config_entries.async_entries = MagicMock(return_value=[entry])
     services_mod.async_unload_services(hass)
@@ -327,7 +414,7 @@ async def test_services_set_shift_and_unload(hass: MagicMock) -> None:
     hass.config_entries.async_entries = MagicMock(return_value=[])
     hass.services.has_service = MagicMock(return_value=True)
     services_mod.async_unload_services(hass)
-    assert hass.services.async_remove.call_count == 4
+    assert hass.services.async_remove.call_count == 5
 
 
 def test_parse_day_helpers() -> None:

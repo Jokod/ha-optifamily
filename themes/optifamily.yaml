@@ -1,18 +1,9 @@
-# Thème OptiFamily — tokens panel (card-mod) + extras sections.
+# Thème OptiFamily — neutre (couleurs HA par défaut, aucune teinte forcée).
 # Installé automatiquement dans config/themes/ par l'intégration.
 # Recharger les thèmes une fois (Paramètres → Outils de développeur).
 
 optifamily:
-  # tokens consommés via card-mod
-  optifamily-accent: "#2B6CB0"
-  optifamily-accent-soft: "#EBF4FF"
-  optifamily-ok: "#2F855A"
-  optifamily-warn: "#C05621"
-  optifamily-danger: "#C53030"
-  optifamily-muted: "#718096"
-  optifamily-surface: "#F7FAFC"
-  optifamily-radius: "12px"
-  # keep section vars as harmless extras for users who use sections
+  # Layout sections uniquement (pas de palette clair/sombre custom)
   ha-view-sections-column-min-width: 320px
   ha-view-sections-column-max-width: 960px
   ha-view-sections-column-gap: 16px

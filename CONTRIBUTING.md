@@ -95,7 +95,7 @@ Décrivez :
 | `strings.json` / `translations/` | Internationalisation |
 | `blueprints.py` | Copie des blueprints vers `config/blueprints` au setup |
 | `blueprints/automation/` | YAML d'automatisation (emballés dans le composant HACS) |
-| `dashboards/optifamily.yaml` | Lovelace panel FR — Mushroom, card-mod, auto-entities, week-planner |
+| `dashboards/optifamily.yaml` | Lovelace panel FR — Mushroom, card-mod, auto-entities, calendrier mois |
 | `packages/optifamily_helpers.yaml` | Quiet hours + scripts (pas de logique métier) |
 | `day_context.py` | Phase / présence / messages FR (source de vérité) |
 | `binary_sensor.py` | Capteur attention famille |
