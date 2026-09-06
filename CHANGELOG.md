@@ -7,6 +7,23 @@ et ce projet adhère au [Versionnement Sémantique](https://semver.org/lang/fr/)
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-09-06
+
+### Added
+- Dates FR (`date_fr` / `date_label`) sur messages, documents, actualités et journal
+- Dashboard Accueil : couleurs selon phase, attention, synchro et navigation
+
+### Changed
+- Messages : libellé **Moi** (plus « Vous »), bulles différenciées Crèche / Moi (alignement + liserés)
+
+### Fixed
+- Documents portée **enfant** : switch effectif (`enfant_id` auto + chips par enfant)
+- Affichage messages dashboard : lecture via `state_attr(..., 'items')` (conflit Jinja `dict.items`)
+
+### Migration 1.1.1 → 1.1.2
+1. Mettre à jour HACS → redémarrer HA
+2. Remplacer/re-importer le dashboard `dashboards/optifamily.yaml`
+
 ## [1.1.1] - 2026-09-06
 
 ### Added

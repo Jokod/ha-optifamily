@@ -883,6 +883,15 @@ async def test_coordinator_enabled_enfants_and_metadata(hass: MagicMock) -> None
     with pytest.raises(ValueError):
         await coord.async_set_documents_scope("nope")
 
+    coord.data = data
+    coord.documents_enfant_id = None
+    await coord.async_set_documents_scope(DOCUMENTS_SCOPE_ENFANT)
+    assert coord.documents_scope == DOCUMENTS_SCOPE_ENFANT
+    assert coord.documents_enfant_id == 1
+
+    await coord.async_set_documents_scope(DOCUMENTS_SCOPE_ENFANT, 2)
+    assert coord.documents_enfant_id == 2
+
 
 @pytest.mark.asyncio
 async def test_config_flow_reauth_and_options() -> None:
@@ -1113,6 +1122,17 @@ async def test_sensors_phase_resume_documents(hass: MagicMock) -> None:
     coordinator.documents_scope = DOCUMENTS_SCOPE_FAMILLE
     assert docs.native_value == 1
     assert docs.extra_state_attributes["scope"] == DOCUMENTS_SCOPE_FAMILLE
+
+    coordinator.documents_scope = DOCUMENTS_SCOPE_ENFANT
+    coordinator.documents_enfant_id = None
+    assert sensor_mod._documents_for_scope(coordinator)[0] == DOCUMENTS_SCOPE_ENFANT
+    assert sensor_mod._documents_for_scope(coordinator)[1] == 1
+
+    coordinator.documents_scope = DOCUMENTS_SCOPE_ENFANT
+    coordinator.documents_enfant_id = None
+    coordinator.entry = None
+    assert sensor_mod._documents_for_scope(coordinator) == (DOCUMENTS_SCOPE_ENFANT, None, [])
+    coordinator.entry = entry
 
     coordinator.documents_scope = DOCUMENTS_SCOPE_ENFANT
     coordinator.documents_enfant_id = 1

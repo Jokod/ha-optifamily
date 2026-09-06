@@ -30,6 +30,7 @@ from .const import (
     DEFAULT_PAUSE_WHEN_CLOSED,
     DEFAULT_SCAN_INTERVAL,
     DOCUMENTS_SCOPE_CRECHE,
+    DOCUMENTS_SCOPE_ENFANT,
     DOCUMENTS_SCOPES,
     DOMAIN,
     PLANNING_CACHE_TTL,
@@ -329,7 +330,18 @@ class OptieFamilyCoordinator(DataUpdateCoordinator[OptieFamilyData]):
         if scope not in DOCUMENTS_SCOPES:
             raise ValueError(f"Scope documents invalide : {scope}")
         self.documents_scope = scope
-        self.documents_enfant_id = int(enfant_id) if enfant_id is not None else None
+        if scope == DOCUMENTS_SCOPE_ENFANT:
+            if enfant_id is not None:
+                self.documents_enfant_id = int(enfant_id)
+            elif self.documents_enfant_id is None:
+                followed = iter_enfants_enabled(
+                    list((self.data.enfants if self.data else None) or []),
+                    list(self.entry.data.get(CONF_ENFANTS, [])),
+                    enabled_ids=self.entry.options.get(CONF_ENABLED_ENFANTS),
+                )
+                self.documents_enfant_id = followed[0].id if followed else None
+        else:
+            self.documents_enfant_id = int(enfant_id) if enfant_id is not None else None
         self.async_update_listeners()
 
     # ------------------------------------------------------------------

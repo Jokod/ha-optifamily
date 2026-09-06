@@ -42,6 +42,8 @@ from .models import (
     build_enfants_summary,
     flatten_planning_jours,
     format_creneau_labels,
+    format_date_fr,
+    format_date_label_fr,
     get_attendance_creneaux,
     get_presence,
     get_today_creneaux,
@@ -96,6 +98,8 @@ def _message_sensor_attrs(data: OptieFamilyData, *, from_me: bool) -> dict[str, 
         "non_lus": len(unread),
         "last_message_date": subset[0].get("date") if subset else None,
         "last_unread_date": unread[0].get("date") if unread else None,
+        "last_message_date_fr": format_date_fr(subset[0].get("date")) if subset else None,
+        "last_unread_date_fr": format_date_fr(unread[0].get("date")) if unread else None,
         "items": normalize_message_items(subset),
     }
 
@@ -110,6 +114,7 @@ def _messages_thread_attrs(data: OptieFamilyData) -> dict[str, Any]:
         "non_lus_creche": len(_unread_messages(_messages_from_sender(thread, from_me=False))),
         "non_lus_moi": len(_unread_messages(_messages_from_sender(thread, from_me=True))),
         "last_message_date": thread[0].get("date") if thread else None,
+        "last_message_date_fr": format_date_fr(thread[0].get("date")) if thread else None,
         "items": normalize_message_items(thread, limit=40),
     }
 
@@ -122,11 +127,19 @@ def _documents_for_scope(coordinator: OptieFamilyCoordinator) -> tuple[str, int 
         return scope, enfant_id, []
     if scope == DOCUMENTS_SCOPE_FAMILLE:
         return scope, None, list(getattr(data, "documents_famille", None) or [])
-    if scope == DOCUMENTS_SCOPE_ENFANT and enfant_id is not None:
+    if scope == DOCUMENTS_SCOPE_ENFANT:
+        if enfant_id is None:
+            entry = getattr(coordinator, "entry", None)
+            if entry is not None:
+                followed = _get_enfants(coordinator, entry)
+                if followed:
+                    enfant_id = followed[0].id
+        if enfant_id is None:
+            return scope, None, []
         return (
             scope,
-            enfant_id,
-            list((getattr(data, "documents_enfant", None) or {}).get(enfant_id, [])),
+            int(enfant_id),
+            list((getattr(data, "documents_enfant", None) or {}).get(int(enfant_id), [])),
         )
     return DOCUMENTS_SCOPE_CRECHE, None, list(data.documents or [])
 
@@ -533,11 +546,18 @@ class OptieFamilyDocumentsSensor(_OptieFamilyBaseSensor):
             str(eid): len(vals)
             for eid, vals in (getattr(data, "documents_enfant", None) or {}).items()
         }
+        enfant_libelle = None
+        if scope == DOCUMENTS_SCOPE_ENFANT and enfant_id is not None:
+            for enfant in _get_enfants(self.coordinator, self._entry):
+                if enfant.id == int(enfant_id):
+                    enfant_libelle = enfant.libelle
+                    break
         return {
             "optifamily_kind": "documents",
             **_scope_attrs(self._entry),
             "scope": scope,
             "enfant_id": enfant_id,
+            "enfant_libelle": enfant_libelle,
             "counts": {
                 "creche": len(data.documents) if data else 0,
                 "famille": len(getattr(data, "documents_famille", None) or []) if data else 0,
@@ -746,6 +766,8 @@ class OptieFamilyChildTransmissionsSensor(_ChildSensor):
             **_scope_attrs(self._entry),
             "count": len(items),
             "date": date.today().isoformat(),
+            "date_fr": format_date_fr(date.today(), with_time=False),
+            "date_label": format_date_label_fr(date.today()),
             "items": items,
             "lignes": [i["ligne"] for i in items],
             "markdown": transmissions_markdown(
@@ -794,6 +816,8 @@ class OptieFamilyChildTransmissionsJournalSensor(_ChildSensor):
             "optifamily_kind": "transmissions_journal",
             **_scope_attrs(self._entry),
             "date": day.isoformat(),
+            "date_fr": format_date_fr(day, with_time=False),
+            "date_label": format_date_label_fr(day),
             "count": len(items),
             "items": items,
             "lignes": [i["ligne"] for i in items],

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import date
 import sys
@@ -459,12 +460,19 @@ def hass(tmp_path) -> MagicMock:
     mock.config_entries.async_unload_platforms = AsyncMock(return_value=True)
     mock.config_entries.async_reload = AsyncMock(return_value=None)
     mock.config_entries.async_entries = MagicMock(return_value=[])
-    mock.async_create_task = MagicMock()
     mock.services.has_service = MagicMock(return_value=False)
     mock.services.async_register = MagicMock()
     mock.services.async_remove = MagicMock()
     mock.config_entries.flow.async_init = AsyncMock()
     mock.config.path = lambda *parts: str(tmp_path.joinpath(*parts))
+
+    def _async_create_task(coro: Any, *args: Any, **kwargs: Any) -> Any:
+        """Planifie la coroutine (évite RuntimeWarning: never awaited)."""
+        if asyncio.iscoroutine(coro):
+            return asyncio.get_running_loop().create_task(coro)
+        return MagicMock()
+
+    mock.async_create_task = MagicMock(side_effect=_async_create_task)
 
     async def _add_executor_job(func: Any, *args: Any) -> Any:
         return func(*args)

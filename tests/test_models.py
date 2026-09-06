@@ -12,6 +12,8 @@ from custom_components.optifamily.models import (
     enabled_enfant_ids,
     flatten_planning_jours,
     format_creneau_labels,
+    format_date_fr,
+    format_date_label_fr,
     get_attendance_creneaux,
     get_presence,
     get_today_creneaux,
@@ -27,9 +29,27 @@ from custom_components.optifamily.models import (
     normalize_downloadable_item,
     normalize_facture_items,
     normalize_message_items,
+    parse_api_datetime,
     parse_creneau_bounds,
     planning_to_events,
 )
+
+
+def test_format_date_fr() -> None:
+    assert format_date_fr("2026-09-06") == "06/09/2026"
+    assert format_date_fr("2026-09-06 15:41:42") == "06/09/2026 15:41"
+    assert format_date_label_fr("2026-09-06") == "dimanche 6 septembre 2026"
+    assert format_date_fr(date(2026, 9, 6), with_time=False) == "06/09/2026"
+    assert format_date_fr(date(2026, 9, 6)) == "06/09/2026"
+    noon = datetime(2026, 9, 6, 15, 41)
+    assert parse_api_datetime(noon) is noon
+    assert format_date_fr(noon) == "06/09/2026 15:41"
+    assert format_date_fr(datetime(2026, 9, 6, 0, 0, 0)) == "06/09/2026"
+    assert parse_api_datetime(None) is None
+    assert parse_api_datetime("") is None
+    assert format_date_fr(None) == ""
+    assert format_date_fr("pas-une-date") == "pas-une-date"
+    assert format_date_label_fr("pas-une-date") == "pas-une-date"
 
 
 def test_enfant_from_dict_ok() -> None:
@@ -465,7 +485,7 @@ def test_normalize_downloadable_and_lists() -> None:
     normalized = normalize_message_items(msgs, limit=3)
     assert len(normalized) == 2
     assert normalized[0]["titre"] == "Bonjour"
-    assert normalized[0]["origine"] == "Vous"
+    assert normalized[0]["origine"] == "Moi"
     assert "Bonjour Elise" in normalized[1]["titre"]
     assert normalized[1]["vu"] is False
     assert normalize_message_items(None) == []
@@ -486,7 +506,7 @@ def test_normalize_downloadable_and_lists() -> None:
         == 3
     )
     empty = normalize_message_items([{"id": 2, "sender": True, "message": "", "vu": True}])[0]
-    assert empty["titre"] == "Vous"
+    assert empty["titre"] == "Moi"
 
 
 def _pick_via_normalize_id_skip() -> bool:

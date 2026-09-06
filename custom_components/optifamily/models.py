@@ -13,6 +13,81 @@ _CLOSED_LABEL_RE = re.compile(
     r"(fermeture|ferm[eé]|closed|cong[eé]s?|absence|f[eé]ri[eé])",
     re.IGNORECASE,
 )
+_JOURS_FR = (
+    "lundi",
+    "mardi",
+    "mercredi",
+    "jeudi",
+    "vendredi",
+    "samedi",
+    "dimanche",
+)
+_MOIS_FR = (
+    "janvier",
+    "février",
+    "mars",
+    "avril",
+    "mai",
+    "juin",
+    "juillet",
+    "août",
+    "septembre",
+    "octobre",
+    "novembre",
+    "décembre",
+)
+
+
+def parse_api_datetime(value: Any) -> datetime | None:
+    """Parse une date/heure API (ISO ou ``YYYY-MM-DD HH:MM:SS``)."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime.combine(value, time.min)
+    text = str(value).strip()
+    if not text:
+        return None
+    normalized = text.replace("Z", "+00:00")
+    if " " in normalized and "T" not in normalized[:11]:
+        normalized = normalized.replace(" ", "T", 1)
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError:
+        pass
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%d/%m/%Y %H:%M:%S", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(text[:19], fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def format_date_fr(value: Any, *, with_time: bool | None = None) -> str:
+    """Date courte FR : ``06/09/2026`` ou ``06/09/2026 15:41``."""
+    dt = parse_api_datetime(value)
+    if dt is None:
+        return str(value).strip() if value not in (None, "") else ""
+    if with_time is None:
+        if isinstance(value, datetime):
+            with_time = not (dt.hour == 0 and dt.minute == 0 and dt.second == 0)
+        elif isinstance(value, date):
+            with_time = False
+        else:
+            text = str(value).strip()
+            with_time = len(text) > 10 and (" " in text or "T" in text)
+    if with_time:
+        return dt.strftime("%d/%m/%Y %H:%M")
+    return dt.strftime("%d/%m/%Y")
+
+
+def format_date_label_fr(value: Any) -> str:
+    """Date longue FR : ``samedi 6 septembre 2026``."""
+    dt = parse_api_datetime(value)
+    if dt is None:
+        return format_date_fr(value, with_time=False)
+    return f"{_JOURS_FR[dt.weekday()]} {dt.day} {_MOIS_FR[dt.month - 1]} {dt.year}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -723,6 +798,7 @@ def normalize_downloadable_item(
         "media_id": media_id if downloadable else None,
         "date": _pick_str(raw, "date", "createdAt", "created_at", "dateCreation"),
     }
+    item["date_fr"] = format_date_fr(item["date"]) if item["date"] else ""
     if kind == "album":
         photos_raw = raw.get("photos") or raw.get("medias") or raw.get("images") or []
         photos: list[dict[str, Any]] = []
@@ -738,7 +814,7 @@ def normalize_downloadable_item(
     if kind == "message":
         corps = _pick_str(raw, "corps", "body", "contenu", "content", "message", "texte") or ""
         sender = bool(raw.get("sender", False))
-        origine = "Vous" if sender else "Crèche"
+        origine = "Moi" if sender else "Crèche"
         preview = " ".join(corps.split())
         if len(preview) > 72:
             preview = preview[:69] + "…"
@@ -810,6 +886,7 @@ def normalize_actualite_items(actualites: Any, *, limit: int = 20) -> list[dict[
             "resume": _pick_str(raw, "resume", "summary", "contenu", "content", "texte") or "",
             "downloadable": False,
         }
+        item["date_fr"] = format_date_fr(item["date"]) if item["date"] else ""
         items.append(item)
         if len(items) >= limit:
             break
