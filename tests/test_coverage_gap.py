@@ -389,6 +389,10 @@ async def test_services_set_shift_and_unload(hass: MagicMock) -> None:
     call.data = {"date": "2026-09-03"}
     await services_mod._async_set_date(call)
 
+    call.data = {}
+    await services_mod._async_set_date(call)
+    coord.async_set_transmissions_view_date.assert_awaited_with(date.today())
+
     call.data = {"days": -1, "config_entry_id": "e1"}
     await services_mod._async_shift_date(call)
     coord.async_shift_transmissions_view_date.assert_awaited_with(-1)

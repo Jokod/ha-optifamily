@@ -27,7 +27,7 @@ blueprint:
               integration: optifamily
     phase_sensor:
       name: Capteur phase journée (optionnel)
-      description: Capteur OptiFamily « Phase journée » (optifamily_kind: phase_journee)
+      description: "Capteur OptiFamily « Phase journée » (optifamily_kind: phase_journee)"
       default:
       selector:
         entity:
@@ -36,7 +36,7 @@ blueprint:
               integration: optifamily
     resume_sensor:
       name: Capteur résumé (optionnel)
-      description: Capteur OptiFamily « Résumé journée » (optifamily_kind: resume)
+      description: "Capteur OptiFamily « Résumé journée » (optifamily_kind: resume)"
       default:
       selector:
         entity:
@@ -92,7 +92,9 @@ sequence:
         Phase : {{ phase_lib }}
         {% endif %}
         Présents : {{ presents | join(', ') if presents else 'aucun' }}
-        Messages non lus ({{ state_attr(messages_entity, 'origine') | default('?') }}) : {{ unread }}
+        Messages non lus ({{ 'Moi' if state_attr(messages_entity, 'origine') == 'moi'
+          else ('Crèche' if state_attr(messages_entity, 'origine') == 'creche'
+          else (state_attr(messages_entity, 'origine') | default('?'))) }}) : {{ unread }}
         Transmissions du jour : {{ transmissions_total }}
         {% endif %}
   - action: !input notify_action

@@ -28,7 +28,7 @@ blueprint:
               integration: optifamily
     phase_sensor:
       name: Capteur phase journée (optionnel)
-      description: Capteur OptiFamily « Phase journée » (optifamily_kind: phase_journee)
+      description: "Capteur OptiFamily « Phase journée » (optifamily_kind: phase_journee)"
       default:
       selector:
         entity:

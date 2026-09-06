@@ -56,23 +56,30 @@ condition:
 action:
   - variables:
       unread_count: "{{ states(messages_entity) | int(0) }}"
-      last_date: "{{ state_attr(messages_entity, 'last_unread_date') or state_attr(messages_entity, 'last_message_date') }}"
-      origine: "{{ state_attr(messages_entity, 'origine') | default('inconnu') }}"
+      last_date: >
+        {{ state_attr(messages_entity, 'last_unread_date_fr')
+           or state_attr(messages_entity, 'last_message_date_fr')
+           or state_attr(messages_entity, 'last_unread_date')
+           or state_attr(messages_entity, 'last_message_date') }}
+      origine_raw: "{{ state_attr(messages_entity, 'origine') | default('') }}"
+      origine: >
+        {{ 'Moi' if origine_raw == 'moi'
+           else ('Crèche' if origine_raw == 'creche' else (origine_raw or 'inconnu')) }}
   - choose:
       - conditions:
           - condition: template
-            value_template: "{{ last_date is not none }}"
+            value_template: "{{ last_date is not none and last_date not in ['', 'None', none] }}"
         sequence:
           - action: !input notify_action
             data:
               title: "OptiFamily"
               message: >
-                Vous avez {{ unread_count }} message(s) non lu(s) ({{ origine }}).
+                {{ unread_count }} message(s) non lu(s) ({{ origine }}).
                 Dernier message : {{ last_date }}.
     default:
       - action: !input notify_action
         data:
           title: "OptiFamily"
-          message: "Vous avez {{ unread_count }} message(s) non lu(s) ({{ origine }})."
+          message: "{{ unread_count }} message(s) non lu(s) ({{ origine }})."
 
 mode: single

@@ -404,14 +404,23 @@ views:
                   content: Jour précédent
                   tap_action: {action: call-service, service: optifamily.shift_transmissions_date, data: {days: -1}}
                 - type: template
-                  icon: mdi:calendar-today
+                  icon: mdi:calendar
                   content: >
                     {% set j = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind')
                       | selectattr('attributes.optifamily_kind', 'eq', 'transmissions_journal') | list %}
                     {{ (j[0].attributes.date_label if j else none)
                        or (j[0].attributes.date_fr if j else none)
                        or now().strftime('%d/%m/%Y') }}
-                  tap_action: {action: call-service, service: optifamily.set_transmissions_date, data: {date: "{{ now().date().isoformat() }}"}}
+                  tap_action: {action: none}
+                - type: template
+                  icon: mdi:calendar-today
+                  icon_color: >
+                    {% set j = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind')
+                      | selectattr('attributes.optifamily_kind', 'eq', 'transmissions_journal') | list %}
+                    {% set d = j[0].attributes.date if j else none %}
+                    {{ 'teal' if d and d != now().date().isoformat() else 'green' }}
+                  content: Aujourd'hui
+                  tap_action: {action: call-service, service: optifamily.set_transmissions_date}
                 - type: template
                   icon: mdi:chevron-right
                   content: Jour suivant

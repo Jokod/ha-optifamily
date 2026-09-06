@@ -7,6 +7,22 @@ et ce projet adhère au [Versionnement Sémantique](https://semver.org/lang/fr/)
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-09-06
+
+### Added
+- Journal : bouton **Aujourd'hui** (réinitialise la date via `set_transmissions_date` sans paramètre)
+
+### Changed
+- Blueprints messages / résumé : dates FR, libellés **Moi** / **Crèche**, quiet-hours sur `messages_seuil`
+
+### Fixed
+- Blueprints YAML : descriptions avec `optifamily_kind: …` quotées (`resume_famille`, `bilan_soir_famille`)
+
+### Migration 1.1.2 → 1.1.3
+1. Mettre à jour HACS → redémarrer HA (recopie des blueprints)
+2. Remplacer/re-importer le dashboard `dashboards/optifamily.yaml`
+3. Réimporter les blueprints déjà utilisés si besoin
+
 ## [1.1.2] - 2026-09-06
 
 ### Added

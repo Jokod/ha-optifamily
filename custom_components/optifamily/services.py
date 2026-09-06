@@ -29,7 +29,7 @@ _SAFE_NAME = re.compile(r"[^a-zA-Z0-9._-]+")
 
 _SET_SCHEMA = vol.Schema(
     {
-        vol.Required("date"): cv.date,
+        vol.Optional("date"): cv.date,
         vol.Optional("config_entry_id"): cv.string,
     }
 )
@@ -84,7 +84,8 @@ def _coordinators(
 
 
 async def _async_set_date(call: ServiceCall) -> None:
-    day = _parse_day(call.data["date"])
+    raw = call.data.get("date")
+    day = _parse_day(raw) if raw is not None else date.today()
     entry_id = call.data.get("config_entry_id")
     targets = _coordinators(call.hass, entry_id)
     if not targets:
