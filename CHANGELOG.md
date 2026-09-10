@@ -7,6 +7,16 @@ et ce projet adhère au [Versionnement Sémantique](https://semver.org/lang/fr/)
 
 ## [Unreleased]
 
+## [1.1.5] - 2026-09-10
+
+### Fixed
+- `services.yaml` : description date quotée (`défaut : …`) — charge HA
+- Dashboard : filtre Jinja `contains` avant `optifamily_kind` (évite `UndefinedError` sur les capteurs sans attribut)
+
+### Migration 1.1.4 → 1.1.5
+1. Mettre à jour HACS → redémarrer HA
+2. Remplacer/re-importer le dashboard `dashboards/optifamily.yaml`
+
 ## [1.1.4] - 2026-09-06
 
 ### Fixed

@@ -297,9 +297,9 @@ views:
                     if (entry is none or s.attributes.config_entry_id == entry)
                     and states(s.entity_id) not in ['unavailable', 'unknown'] %}
                     {% set id = s.attributes.enfant_id %}
-                    {% set tr = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'transmissions')
+                    {% set tr = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind') | selectattr('attributes.optifamily_kind', 'eq', 'transmissions')
                       | selectattr('attributes.enfant_id', 'eq', id) | list %}
-                    {% set al = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'albums')
+                    {% set al = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind') | selectattr('attributes.optifamily_kind', 'eq', 'albums')
                       | selectattr('attributes.enfant_id', 'eq', id) | list %}
                     {% set plages = (s.attributes.plages or []) | map(attribute='label') | list | join(' · ') %}
                     {% set ph = s.attributes.phase_enfant or s.state %}
@@ -406,7 +406,7 @@ views:
                 - type: template
                   icon: mdi:calendar
                   content: >
-                    {% set j = states.sensor
+                    {% set j = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind')
                       | selectattr('attributes.optifamily_kind', 'eq', 'transmissions_journal') | list %}
                     {{ (j[0].attributes.date_label if j else none)
                        or (j[0].attributes.date_fr if j else none)
@@ -415,7 +415,7 @@ views:
                 - type: template
                   icon: mdi:calendar-today
                   icon_color: >
-                    {% set j = states.sensor
+                    {% set j = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind')
                       | selectattr('attributes.optifamily_kind', 'eq', 'transmissions_journal') | list %}
                     {% set d = j[0].attributes.date if j else none %}
                     {{ 'teal' if d and d != now().date().isoformat() else 'green' }}
@@ -436,7 +436,7 @@ views:
                   {% set entry = phase[0].attributes.config_entry_id if phase else none %}
                   {% set ns = namespace(out=[]) %}
                   {% set plain = 'ha-card { border: none; box-shadow: none; }' %}
-                  {% for s in states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'transmissions_journal') | list
+                  {% for s in states.sensor | selectattr('attributes', 'contains', 'optifamily_kind') | selectattr('attributes.optifamily_kind', 'eq', 'transmissions_journal') | list
                     if (entry is none or s.attributes.config_entry_id == entry)
                     and states(s.entity_id) not in ['unavailable', 'unknown'] %}
                     {% set n = states(s.entity_id) | int(0) %}
@@ -578,7 +578,7 @@ views:
                   {% set entry = phase[0].attributes.config_entry_id if phase else none %}
                   {% set ns = namespace(out=[]) %}
                   {% set plain = 'ha-card { border: none; box-shadow: none; }' %}
-                  {% for s in states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'albums') | list
+                  {% for s in states.sensor | selectattr('attributes', 'contains', 'optifamily_kind') | selectattr('attributes.optifamily_kind', 'eq', 'albums') | list
                     if entry is none or s.attributes.config_entry_id == entry %}
                     {% set ns.out = ns.out + [{
                       'type': 'custom:mushroom-template-card',
@@ -760,7 +760,7 @@ views:
                   {% set entry = phase[0].attributes.config_entry_id if phase else none %}
                   {% set ns = namespace(out=[]) %}
                   {% set plain = 'ha-card { border: none; box-shadow: none; }' %}
-                  {% set creches = states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'creche') | list %}
+                  {% set creches = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind') | selectattr('attributes.optifamily_kind', 'eq', 'creche') | list %}
                   {% for s in creches if entry is none or s.attributes.config_entry_id == entry %}
                     {% set nom = s.attributes.nom or states(s.entity_id) or 'Crèche' %}
                     {% set adresse = s.attributes.adresse or '' %}
@@ -815,7 +815,7 @@ views:
                   {% set entry = phase[0].attributes.config_entry_id if phase else none %}
                   {% set ns = namespace(out=[]) %}
                   {% set plain = 'ha-card { border: none; box-shadow: none; }' %}
-                  {% for s in states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'actualites_total') | list
+                  {% for s in states.sensor | selectattr('attributes', 'contains', 'optifamily_kind') | selectattr('attributes.optifamily_kind', 'eq', 'actualites_total') | list
                     if entry is none or s.attributes.config_entry_id == entry %}
                     {% set ns.out = ns.out + [{
                       'type': 'custom:mushroom-template-card', 'entity': s.entity_id,
@@ -853,7 +853,7 @@ views:
                   {% set entry = phase[0].attributes.config_entry_id if phase else none %}
                   {% set ns = namespace(out=[]) %}
                   {% set plain = 'ha-card { border: none; box-shadow: none; }' %}
-                  {% for s in states.sensor | selectattr('attributes.optifamily_kind', 'eq', 'facturation_total') | list
+                  {% for s in states.sensor | selectattr('attributes', 'contains', 'optifamily_kind') | selectattr('attributes.optifamily_kind', 'eq', 'facturation_total') | list
                     if entry is none or s.attributes.config_entry_id == entry %}
                     {% set ns.out = ns.out + [{
                       'type': 'custom:mushroom-template-card', 'entity': s.entity_id,
