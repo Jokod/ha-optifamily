@@ -39,6 +39,7 @@ from .day_context import compute_enfant_day, compute_family_day
 from .devices import async_get_or_create_hub_device_id
 from .models import (
     Enfant,
+    aggregate_transmissions,
     build_enfants_summary,
     flatten_planning_jours,
     format_creneau_labels,
@@ -757,6 +758,7 @@ class OptieFamilyChildTransmissionsSensor(_ChildSensor):
     def extra_state_attributes(self) -> dict[str, Any]:
         raw = self.coordinator.data.transmissions.get(self._enfant.id, [])
         items = normalize_transmissions(raw)
+        stats = aggregate_transmissions(raw)
         return {
             "enfant_id": self._enfant.id,
             "enfant_libelle": self._enfant.libelle,
@@ -766,6 +768,7 @@ class OptieFamilyChildTransmissionsSensor(_ChildSensor):
             "date": date.today().isoformat(),
             "date_fr": format_date_fr(date.today(), with_time=False),
             "date_label": format_date_label_fr(date.today()),
+            "stats": stats,
             "items": items,
             "lignes": [i["ligne"] for i in items],
             "markdown": transmissions_markdown(
@@ -808,6 +811,7 @@ class OptieFamilyChildTransmissionsJournalSensor(_ChildSensor):
             raw = self.coordinator.data.transmissions.get(self._enfant.id, [])
         raw = raw or []
         items = normalize_transmissions(raw)
+        stats = aggregate_transmissions(raw)
         return {
             "enfant_id": self._enfant.id,
             "enfant_libelle": self._enfant.libelle,
@@ -817,6 +821,7 @@ class OptieFamilyChildTransmissionsJournalSensor(_ChildSensor):
             "date_fr": format_date_fr(day, with_time=False),
             "date_label": format_date_label_fr(day),
             "count": len(items),
+            "stats": stats,
             "items": items,
             "lignes": [i["ligne"] for i in items],
             "markdown": transmissions_markdown(

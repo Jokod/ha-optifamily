@@ -352,6 +352,18 @@ def test_normalize_transmissions_sample() -> None:
 
     items = normalize_transmissions(raw)
     assert len(items) == 4
+    from custom_components.optifamily.models import aggregate_transmissions
+
+    stats = aggregate_transmissions(raw)
+    assert stats["biberons"] == 1
+    assert stats["biberons_ml"] == 210
+    assert stats["siestes"] == 1
+    assert stats["siestes_minutes"] == 60
+    assert stats["siestes_duree"] == "01:00"
+    assert stats["changes"] == 1
+    assert stats["changes_caca"] == 1
+    assert stats["arrivee"] == "08:00"
+    assert "biberon" in stats["resume"].lower() or "210" in stats["resume"]
     assert items[0]["type"] == "sieste"
     assert items[0]["heure"] == "09:45"
     assert items[0]["debut"] == "09:45"

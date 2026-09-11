@@ -7,6 +7,16 @@ et ce projet adhère au [Versionnement Sémantique](https://semver.org/lang/fr/)
 
 ## [Unreleased]
 
+## [1.1.6] - 2026-09-11
+
+### Added
+- Stats journalières des transmissions (`stats`) : biberons/ml, siestes/durée, changes, arrivée/départ
+- Dashboard Journal : résumé + chips stats par enfant
+
+### Migration 1.1.5 → 1.1.6
+1. Mettre à jour HACS → redémarrer HA
+2. Remplacer/re-importer le dashboard `dashboards/optifamily.yaml`
+
 ## [1.1.5] - 2026-09-10
 
 ### Fixed

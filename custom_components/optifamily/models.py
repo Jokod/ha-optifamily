@@ -663,6 +663,127 @@ def normalize_transmissions(raw_list: list[dict[str, Any]] | None) -> list[dict[
     return items
 
 
+def _parse_hhmm_duration(value: Any) -> int | None:
+    """Parse ``HH:MM`` / ``H:MM`` → minutes (None si invalide)."""
+    text = str(value or "").strip()
+    if not re.fullmatch(r"\d{1,2}:\d{2}", text):
+        return None
+    hours_s, minutes_s = text.split(":")
+    hours = int(hours_s)
+    minutes = int(minutes_s)
+    if minutes >= 60 or hours < 0 or minutes < 0:
+        return None
+    return hours * 60 + minutes
+
+
+def _parse_volume_ml(raw: dict[str, Any]) -> int | None:
+    """Volume repas en ml (`valeur1` digit ou ``210 ml`` dans detail)."""
+    v1 = str(raw.get("valeur1") or "").strip()
+    if v1.isdigit():
+        return int(v1)
+    detail = str(raw.get("detail") or "").strip().lower()
+    match = re.search(r"(\d+)\s*ml", detail)
+    if match:
+        return int(match.group(1))
+    return None
+
+
+def _format_duration_minutes(total_minutes: int) -> str:
+    """Minutes → ``HH:MM``."""
+    total = max(0, int(total_minutes))
+    return f"{total // 60:02d}:{total % 60:02d}"
+
+
+def aggregate_transmissions(raw_list: list[dict[str, Any]] | None) -> dict[str, Any]:
+    """Stats du jour : biberons, siestes, changes, etc."""
+    raw_items = [r for r in (raw_list or []) if isinstance(r, dict)]
+    by_type: dict[str, int] = {}
+    biberons = 0
+    biberons_ml = 0
+    repas = 0
+    siestes = 0
+    siestes_minutes = 0
+    changes = 0
+    changes_pipi = 0
+    changes_caca = 0
+    arrivee: str | None = None
+    depart: str | None = None
+
+    for raw in raw_items:
+        kind = str(raw.get("type") or "").strip().lower()
+        if not kind:
+            continue
+        by_type[kind] = by_type.get(kind, 0) + 1
+        sous = str(raw.get("sousType") or raw.get("sous_type") or "").strip().lower()
+        v1 = str(raw.get("valeur1") or "").strip().lower()
+
+        if kind == "repas":
+            repas += 1
+            if sous == "biberon" or str(raw.get("icon") or "").lower() == "biberon":
+                biberons += 1
+                volume = _parse_volume_ml(raw)
+                if volume is not None:
+                    biberons_ml += volume
+        elif kind == "sieste":
+            siestes += 1
+            duration = _parse_hhmm_duration(raw.get("detail"))
+            if duration is None:
+                try:
+                    start = int(raw.get("heure"))
+                    end = int(raw.get("valeur1"))
+                    if end >= start:
+                        duration = end - start
+                except (TypeError, ValueError):
+                    duration = None
+            if duration is not None:
+                siestes_minutes += duration
+        elif kind == "change":
+            changes += 1
+            if v1 == "pipi":
+                changes_pipi += 1
+            elif v1 == "caca":
+                changes_caca += 1
+        elif kind == "arrivee":
+            arrivee = _transmission_display_time(raw) or arrivee
+        elif kind == "depart":
+            depart = _transmission_display_time(raw) or depart
+
+    parts: list[str] = []
+    if biberons:
+        parts.append(f"{biberons} biberon(s)" + (f" · {biberons_ml} ml" if biberons_ml else ""))
+    if siestes:
+        parts.append(f"{siestes} sieste(s) · {_format_duration_minutes(siestes_minutes)}")
+    if changes:
+        detail_change = []
+        if changes_pipi:
+            detail_change.append(f"{changes_pipi} pipi")
+        if changes_caca:
+            detail_change.append(f"{changes_caca} selles")
+        suffix = f" ({', '.join(detail_change)})" if detail_change else ""
+        parts.append(f"{changes} change(s){suffix}")
+    if arrivee:
+        parts.append(f"Arrivée {arrivee}")
+    if depart:
+        parts.append(f"Départ {depart}")
+
+    return {
+        "total": len(raw_items),
+        "by_type": by_type,
+        "biberons": biberons,
+        "biberons_ml": biberons_ml,
+        "repas": repas,
+        "siestes": siestes,
+        "siestes_minutes": siestes_minutes,
+        "siestes_duree": _format_duration_minutes(siestes_minutes),
+        "changes": changes,
+        "changes_pipi": changes_pipi,
+        "changes_caca": changes_caca,
+        "arrivee": arrivee,
+        "depart": depart,
+        "resume": " · ".join(parts) if parts else "Aucune donnée agrégée",
+    }
+
+
 def transmissions_markdown(
     raw_list: list[dict[str, Any]] | None,
     *,

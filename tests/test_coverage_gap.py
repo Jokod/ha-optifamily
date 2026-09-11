@@ -103,6 +103,49 @@ def test_transmission_edge_cases() -> None:
         _transmission_display_time({"type": "arrivee", "valeur1": "480", "detail": ""}) == "08:00"
     )
     assert _transmission_display_time({"type": "sieste", "heure": "", "valeur1": "600"}) == "10:00"
+    from custom_components.optifamily.models import aggregate_transmissions
+
+    empty = aggregate_transmissions([])
+    assert empty["total"] == 0
+    assert empty["resume"] == "Aucune donnée agrégée"
+    assert aggregate_transmissions(None)["total"] == 0
+    assert aggregate_transmissions(["x"])["total"] == 0  # type: ignore[list-item]
+
+    via_detail = aggregate_transmissions(
+        [{"type": "repas", "sousType": "biberon", "detail": "120 ml", "valeur1": ""}]
+    )
+    assert via_detail["biberons"] == 1
+    assert via_detail["biberons_ml"] == 120
+
+    via_icon = aggregate_transmissions(
+        [{"type": "repas", "icon": "biberon", "valeur1": "90", "detail": ""}]
+    )
+    assert via_icon["biberons_ml"] == 90
+
+    no_volume = aggregate_transmissions(
+        [{"type": "repas", "sousType": "biberon", "valeur1": "", "detail": "peu"}]
+    )
+    assert no_volume["biberons"] == 1
+    assert no_volume["biberons_ml"] == 0
+
+    sieste_bounds = aggregate_transmissions(
+        [{"type": "sieste", "heure": "600", "valeur1": "660", "detail": ""}]
+    )
+    assert sieste_bounds["siestes_minutes"] == 60
+
+    bad_duration = aggregate_transmissions(
+        [{"type": "sieste", "heure": "x", "valeur1": "y", "detail": "99:99"}]
+    )
+    assert bad_duration["siestes"] == 1
+    assert bad_duration["siestes_minutes"] == 0
+
+    change_pipi = aggregate_transmissions(
+        [{"type": "change", "valeur1": "pipi"}, {"type": "depart", "detail": "18:00"}]
+    )
+    assert change_pipi["changes_pipi"] == 1
+    assert change_pipi["depart"] == "18:00"
+    assert "pipi" in change_pipi["resume"]
+
     md = transmissions_markdown(
         [{"type": "note", "heure": "100", "detail": 'a <b> & "c"', "complements": ""}]
     )
