@@ -25,6 +25,7 @@ from custom_components.optifamily.day_context import (
     compute_enfant_day,
     compute_family_day,
     enrich_enfant_status,
+    format_family_resume,
 )
 from custom_components.optifamily.models import Enfant
 
@@ -393,3 +394,36 @@ def test_day_context_unparsable_regulier_and_family_maison() -> None:
     )
     assert fam_pick.phase == PHASE_CHERCHER
     assert "récupérer" in fam_pick.attention_raison
+
+
+def test_format_family_resume_includes_stats_and_messages() -> None:
+    day = date(2026, 3, 10)
+    planning = _planning_day(day, [{"type": "regulier", "label": "08:00 - 17:00"}])
+    ctx = compute_family_day(
+        [Enfant(1, "Léa")],
+        {1: planning},
+        now=datetime(2026, 3, 10, 10, 0),
+        unread_creche=2,
+    )
+    texte = format_family_resume(
+        ctx,
+        transmissions={
+            1: [
+                {
+                    "type": "repas",
+                    "sousType": "biberon",
+                    "valeur1": "180",
+                    "detail": "180 ml",
+                },
+                {"type": "sieste", "heure": "600", "valeur1": "660", "detail": "01:00"},
+            ]
+        },
+        unread_creche=2,
+        now=datetime(2026, 3, 10, 10, 0),
+    )
+    assert "OptiFamily —" in texte
+    assert "Phase :" in texte
+    assert "Léa" in texte
+    assert "biberon" in texte.lower() or "180" in texte
+    assert "Messages crèche non lus : 2" in texte
+    assert "Attention :" in texte

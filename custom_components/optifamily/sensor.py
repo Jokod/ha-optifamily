@@ -35,7 +35,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import OptieFamilyCoordinator, OptieFamilyData
-from .day_context import compute_enfant_day, compute_family_day
+from .day_context import compute_enfant_day, compute_family_day, format_family_resume
 from .devices import async_get_or_create_hub_device_id
 from .models import (
     Enfant,
@@ -480,7 +480,7 @@ class OptieFamilyPhaseSensor(_OptieFamilyBaseSensor):
 
 
 class OptieFamilyResumeSensor(_OptieFamilyBaseSensor):
-    """Résumé texte FR pour le hero dashboard."""
+    """Résumé texte FR pour le hero dashboard + notification."""
 
     _attr_name = "Résumé journée"
     _attr_icon = "mdi:text-box-outline"
@@ -502,21 +502,39 @@ class OptieFamilyResumeSensor(_OptieFamilyBaseSensor):
             unread_creche=unread,
         )
 
+    def _unread_creche(self) -> int:
+        data = self.coordinator.data
+        if not data:
+            return 0
+        return len(_unread_messages(_messages_from_sender(data.messages, from_me=False)))
+
     @property
     def native_value(self) -> str:
+        """Message court (bandeau Accueil)."""
         return self._ctx().message
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         ctx = self._ctx()
+        unread = self._unread_creche()
+        data = self.coordinator.data
+        texte = format_family_resume(
+            ctx,
+            transmissions=(data.transmissions if data else {}) or {},
+            unread_creche=unread,
+            now=datetime.now(),
+        )
         return {
             "optifamily_kind": "resume",
             **_scope_attrs(self._entry),
             "phase": ctx.phase,
+            "libelle": ctx.libelle,
             "minutes": ctx.minutes,
             "cible": ctx.cible,
             "attention": ctx.attention,
             "attention_raison": ctx.attention_raison,
+            "texte": texte,
+            "lignes": texte.splitlines(),
         }
 
 

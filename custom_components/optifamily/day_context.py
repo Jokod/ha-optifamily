@@ -9,6 +9,8 @@ from typing import Any
 from .const import PHASE_LEAD_MINUTES
 from .models import (
     Enfant,
+    aggregate_transmissions,
+    format_date_label_fr,
     get_attendance_creneaux,
     get_presence,
     is_jour_fermeture,
@@ -398,6 +400,41 @@ def compute_family_day(
         tous_fermes=tous_fermes,
         enfants=tuple(contexts),
     )
+
+
+def format_family_resume(
+    ctx: FamilyDayContext,
+    *,
+    transmissions: dict[int, list] | None = None,
+    unread_creche: int = 0,
+    now: datetime | None = None,
+) -> str:
+    """Texte de résumé notifiable : phase, enfants, stats du jour, messages."""
+    now = now or datetime.now()
+    day = now.date()
+    date_label = format_date_label_fr(day) or day.isoformat()
+    lines: list[str] = [
+        f"OptiFamily — {date_label} · {now.strftime('%H:%M')}",
+        f"Phase : {ctx.libelle}",
+    ]
+    if ctx.message and ctx.message != ctx.libelle:
+        lines.append(ctx.message)
+
+    transmissions = transmissions or {}
+    for enfant in ctx.enfants:
+        line = enfant.message or f"{enfant.libelle} — {enfant.presence}"
+        stats = aggregate_transmissions(transmissions.get(enfant.enfant_id))
+        resume_stats = stats.get("resume") or ""
+        if resume_stats and resume_stats != "Aucune donnée agrégée":
+            line = f"{line}\n  · {resume_stats}"
+        lines.append(line)
+
+    if unread_creche > 0:
+        lines.append(f"Messages crèche non lus : {unread_creche}")
+    if ctx.attention and ctx.attention_raison not in {"", "RAS"}:
+        lines.append(f"Attention : {ctx.attention_raison}")
+
+    return "\n".join(lines)
 
 
 def enrich_enfant_status(

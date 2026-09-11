@@ -7,6 +7,18 @@ et ce projet adhère au [Versionnement Sémantique](https://semver.org/lang/fr/)
 
 ## [Unreleased]
 
+## [1.1.7] - 2026-09-11
+
+### Changed
+- **Envoyer le résumé** : texte structuré (date, phase, enfants, stats transmissions, messages non lus)
+- Capteur « Résumé journée » : attribut `texte` pour les notifications (l’état reste le message court Accueil)
+- Package helpers + blueprint `resume_famille` alignés sur `texte`
+
+### Migration 1.1.6 → 1.1.7
+1. Mettre à jour HACS → redémarrer HA
+2. Mettre à jour `packages/optifamily_helpers.yaml` si utilisé
+3. Réimporter le blueprint résumé si déjà créé
+
 ## [1.1.6] - 2026-09-11
 
 ### Added

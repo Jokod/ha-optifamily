@@ -83,15 +83,21 @@ sequence:
         {{ state_attr(phase_entity, 'libelle')
            if phase_entity not in [none, '', 'none'] else none }}
       resume_txt: >
-        {{ states(resume_entity)
-           if resume_entity not in [none, '', 'none']
-              and states(resume_entity) not in ['unknown', 'unavailable', none, '']
-           else none }}
+        {% set texte = state_attr(resume_entity, 'texte')
+           if resume_entity not in [none, '', 'none'] else none %}
+        {% if texte not in [none, '', 'unknown', 'unavailable'] %}
+          {{ texte }}
+        {% elif resume_entity not in [none, '', 'none']
+              and states(resume_entity) not in ['unknown', 'unavailable', none, ''] %}
+          {{ states(resume_entity) }}
+        {% else %}
+          {{ none }}
+        {% endif %}
       resume: >
-        OptiFamily — {{ now().strftime('%d/%m %H:%M') }}
         {% if resume_txt %}
         {{ resume_txt }}
         {% else %}
+        OptiFamily — {{ now().strftime('%d/%m %H:%M') }}
         {% if phase_lib and phase_lib not in ['unknown', 'unavailable', none] %}
         Phase : {{ phase_lib }}
         {% endif %}

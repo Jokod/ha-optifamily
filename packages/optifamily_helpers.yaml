@@ -61,12 +61,18 @@ script:
               | list %}
             {{ s[0].entity_id if s else none }}
           titre: >
-            OptiFamily — {{ state_attr(phase_s, 'libelle')
-              | default(states(phase_s) if phase_s else 'Résumé') }}
+            OptiFamily — {{ state_attr(resume_s, 'libelle')
+              | default(state_attr(phase_s, 'libelle')
+              | default(states(phase_s) if phase_s else 'Résumé')) }}
           corps: >
-            {{ states(resume_s) if resume_s
-               and states(resume_s) not in ['unknown', 'unavailable', none, '']
-               else 'Aucun résumé disponible.' }}
+            {% set texte = state_attr(resume_s, 'texte') if resume_s else none %}
+            {% if texte not in [none, '', 'unknown', 'unavailable'] %}
+              {{ texte }}
+            {% elif resume_s and states(resume_s) not in ['unknown', 'unavailable', none, ''] %}
+              {{ states(resume_s) }}
+            {% else %}
+              Aucun résumé disponible.
+            {% endif %}
       - action: notify.persistent_notification
         data:
           title: "{{ titre }}"

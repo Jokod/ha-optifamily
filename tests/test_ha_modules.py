@@ -1113,6 +1113,13 @@ async def test_sensors_phase_resume_documents(hass: MagicMock) -> None:
     assert "phase" in phase.extra_state_attributes
     assert isinstance(resume.native_value, str)
     assert resume.extra_state_attributes["optifamily_kind"] == "resume"
+    assert "texte" in resume.extra_state_attributes
+    assert "Phase :" in resume.extra_state_attributes["texte"]
+
+    coordinator.data = None
+    assert resume._unread_creche() == 0
+    assert isinstance(resume.extra_state_attributes["texte"], str)
+    coordinator.data = data
 
     assert docs.native_value == 1
     attrs = docs.extra_state_attributes
