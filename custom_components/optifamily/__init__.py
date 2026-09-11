@@ -16,12 +16,14 @@ from .config import CONFIG_SCHEMA
 from .config import async_setup as async_setup_config
 from .const import CONF_CRECHE_ID, CONF_PASSWORD, CONF_USERNAME, DOMAIN, PLATFORMS
 from .coordinator import OptieFamilyCoordinator
+from .dashboards_files import async_install_dashboard, async_uninstall_dashboard
 from .exceptions import (
     OptieFamilyApiError,
     OptieFamilyAuthError,
     OptieFamilyConnectionError,
     OptieFamilySetupError,
 )
+from .helpers_package import async_install_package, async_uninstall_package
 from .services import async_setup_services, async_unload_services
 from .themes import async_install_theme, async_uninstall_theme
 
@@ -98,6 +100,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: OptieFamilyConfigEntry) 
     async_setup_services(hass)
     await async_install_blueprints(hass)
     await async_install_theme(hass)
+    await async_install_package(hass)
+    await async_install_dashboard(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
@@ -135,6 +139,8 @@ async def async_remove_entry(hass: HomeAssistant, entry: OptieFamilyConfigEntry)
     if not remaining:
         await async_uninstall_blueprints(hass)
         await async_uninstall_theme(hass)
+        await async_uninstall_package(hass)
+        await async_uninstall_dashboard(hass)
         async_unload_services(hass)
 
 

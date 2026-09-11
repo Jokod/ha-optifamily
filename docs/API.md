@@ -1,7 +1,7 @@
 # API optiFamily — référence technique (contributeurs)
 
 > **Public cible** : développeurs / contributeurs du projet.  
-> Pour installer et utiliser l’intégration : voir le [README](../README.md).
+> Pour installer et utiliser l’intégration : [README](../README.md) et [GUIDE.md](GUIDE.md).
 >
 > Documentation communautaire non officielle, basée sur l’observation des requêtes du portail.  
 > Cette intégration est un projet open-source non officiel et n'est ni affiliée à, ni soutenue par THEMISTO CONSEIL / optiCrèche.

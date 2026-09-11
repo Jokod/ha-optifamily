@@ -7,6 +7,23 @@ et ce projet adhère au [Versionnement Sémantique](https://semver.org/lang/fr/)
 
 ## [Unreleased]
 
+## [1.1.8] - 2026-09-11
+
+### Added
+- Guide utilisateur complet : [docs/GUIDE.md](docs/GUIDE.md) (données, attributs, affichage, services)
+- Installation auto du **package helpers** → `config/packages/` (optionnel à activer)
+- Copie auto du **dashboard YAML d’exemple** → `config/optifamily/dashboards/` (facultatif à importer)
+
+### Changed
+- README recentré : données d’abord ; dashboard / helpers / thème présentés comme **optionnels**
+- `hacs.json` : `"country": "FR"` (intégration réservée à la France dans HACS)
+
+### Migration 1.1.7 → 1.1.8
+1. HACS → redémarrer HA
+2. Lire [docs/GUIDE.md](docs/GUIDE.md) pour construire son UI
+3. Importer le dashboard **seulement** si désiré
+4. Packages HA une fois si vous voulez les helpers silencieux
+
 ## [1.1.7] - 2026-09-11
 
 ### Changed

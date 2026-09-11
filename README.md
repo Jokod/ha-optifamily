@@ -11,6 +11,9 @@ Intégration **open-source non officielle** pour Home Assistant : suivez la pré
 
 Compatible **un ou plusieurs enfants**, et **plusieurs crèches** (une instance d’intégration par crèche).
 
+**Doc complète (données, attributs, affichage, services)** → [docs/GUIDE.md](docs/GUIDE.md)  
+L’intégration fournit les **données** ; le tableau de bord d’exemple est **facultatif** — vous pouvez n’utiliser que vos cartes / automations.
+
 ---
 
 ## Installation rapide
@@ -96,126 +99,34 @@ Puis redémarrez Home Assistant.
 
 ## Ce que vous obtenez
 
-### Vue famille (appareil global)
+Capteurs famille (phase, résumé, messages, crèche, docs, factures…), capteurs **par enfant** (présence, transmissions, albums…), calendriers, et services (`refresh`, journal, documents, download).
 
-| Capteur | Utilité |
-|---|---|
-| Enfants | Nombre d’enfants suivis |
-| Enfants en crèche aujourd’hui | Combien d’enfants sont prévus aujourd’hui (+ leurs prénoms) |
-| Phase journée | `maison` · `deposer` · `creche` · `chercher` · `rentre` · `ferme` · `inconnu` |
-| Résumé journée | Message FR contextuel (hero dashboard) |
-| Attention | Binary sensor « problème » si messages non lus ou dépôt/récupération ≤ 90 min |
-| Messages | Fil de discussion complet (`items[]` chronologique) |
-| Messages non lus (crèche) | Messages reçus + `items[]` (corps) |
-| Messages non lus (moi) | Messages envoyés encore non lus |
-| Crèche | Fiche structure (`/creche` : adresse, téléphone, email…) |
-| Actualités / Documents / Factures | Compteurs + `items[]` riches (téléchargement docs/factures) |
+Inventaire détaillé des `optifamily_kind`, attributs (`texte`, `stats`, `items[]`…) et exemples de cartes : **[Guide d’utilisation](docs/GUIDE.md)**.
 
-### Par enfant (un appareil Home Assistant chacun)
+Les noms d’entités dépendent de la crèche / des prénoms. Pour les retrouver : attribut **`optifamily_kind`** (et `config_entry_id` en multi-crèche).
 
-| Capteur | Utilité |
-|---|---|
-| Présent aujourd’hui | `présent` / `absent` / `inconnu` + `statut_jour`, `plages`, `phase_enfant`, `message` |
-| Créneaux ce mois | Nombre de créneaux réguliers |
-| Transmissions du jour | Compteur + timeline (cartes sieste / change / repas…) |
-| Journal transmissions | Même timeline pour une date naviguable |
-| Albums | Nombre d’albums + photos (`items[]`, download) |
+Dans **Configurer** : multi-select **Enfants suivis** — les exclus sont retirés du suivi et purgés.
 
-Les noms exacts des entités dépendent du **nom de la crèche** et des prénoms
-(ex. `sensor.ma_creche_enfants`, `sensor.lea_present_aujourd_hui`).
-Les tableaux de bord fournis retrouvent tout seuls les capteurs via l’attribut `optifamily_kind`
-(et `config_entry_id` en multi-crèche).
-
-Un **calendrier famille** par entry (`calendar.optifamily_planning_<entry8>`) alimente
-l’aperçu semaine et l’onglet **Calendrier**.
-
-Dans **Configurer** l’intégration : multi-select **Enfants suivis** — les exclus sont
-retirés du suivi (plus de polling enfant) et leurs devices/entités sont purgés.
 ---
 
-## Automatisations & tableau de bord
+## Extras optionnels
 
-### Blueprints inclus
+Rien de tout ceci n’est requis pour utiliser les données.
 
-Après installation **HACS** (et un redémarrage), les blueprints sont copiés automatiquement dans `config/blueprints/automation/optifamily/` et `config/blueprints/script/optifamily/`. Ils apparaissent dans **Paramètres → Automatisations & scènes → Blueprints**. À la suppression de la **dernière** instance OptiFamily, ces fichiers copiés sont retirés.
+| Extra | Rôle | Obligatoire |
+|-------|------|-------------|
+| Blueprints | Modèles d’automations (à créer soi-même depuis le blueprint) | Non |
+| Package helpers | Mode silencieux + scripts confort (`config/packages/…`) | Non |
+| Thème | Largeur sections Lovelace | Non |
+| **Dashboard d’exemple** | YAML prêt à importer — **à vous de décider** | Non |
 
-| Blueprint | Type | Idée |
-|---|---|---|
-| Nouveau message | Automation | Message non lu (choisir le capteur **crèche**) |
-| Messages (seuil) | Automation | Alerte si le compteur dépasse N |
-| Nouvel album / photos | Automation | Nouvel album (par enfant) |
-| Nouvelle facture | Automation | Compteur factures en hausse |
-| Nouveau document | Automation | Compteur documents en hausse |
-| Nouvelle actualité | Automation | Compteur actualités en hausse |
-| Transmissions du jour | Automation | Nouvelles transmissions (par enfant) |
-| Rappel crèche famille | Automation | Rappel matinal pour tous les enfants |
-| Rappel crèche matin | Automation | Rappel pour un enfant précis |
-| Rappel créneau | Automation | Déposer / chercher selon horaires (anticipation) |
-| Changement de présence | Automation | Notifie présent ↔ absent |
-| Bilan du soir | Automation | Résumé familial le soir |
-| Résumé famille | **Script** | Résumé à la demande (bouton / autre auto) |
+Détail (activation packages, import dashboard, cartes HACS si vous choisissez l’exemple) : [Guide §7](docs/GUIDE.md#7-extras-optionnels-livrés-avec-lintégration).
 
-### Tableau de bord
+---
 
-Fichier unique FR : [`dashboards/optifamily.yaml`](dashboards/optifamily.yaml).
+## Exemples d’automations
 
-Import : **Paramètres → Tableaux de bord → Ajouter → Importer YAML**.
-Les cartes détectent l’intégration automatiquement (`optifamily_kind`).
-En multi-crèche : **un dashboard par entry** (filtre `config_entry_id`).
-
-Les vues sont en **panel plein largeur**. Le thème `optifamily` est **neutre**
-(layout sections uniquement — **aucune couleur forcée** ; le thème HA s’applique).
-Une fois : `frontend:` → `themes: !include_dir_merge_named themes` dans
-`configuration.yaml`, puis recharger les thèmes.
-
-Cartes Lovelace HACS à installer **à la main** (HACS → Frontend). L’intégration **ne les installe pas**.
-
-| Carte | Dépôt |
-|---|---|
-| Mushroom | [lovelace-mushroom](https://github.com/piitaya/lovelace-mushroom) |
-| card-mod | [lovelace-card-mod](https://github.com/thomasloven/lovelace-card-mod) |
-| auto-entities | [lovelace-auto-entities](https://github.com/thomasloven/lovelace-auto-entities) |
-| layout-card (mod-card) | [lovelace-layout-card](https://github.com/thomasloven/lovelace-layout-card) |
-
-Onglets : **Accueil**, **Enfants**, **Planning** (calendrier mois HA), **Transmissions**, **Messages**, **Médias**, **Infos** (fiche crèche / actualités / factures).
-
-Services : `optifamily.set_transmissions_date` / `shift_transmissions_date`,
-`optifamily.set_documents_scope` (`creche` \| `famille` \| `enfant`),
-`optifamily.download` (photo / document / facture → `/local/optifamily/...`),
-`optifamily.refresh` (sync API immédiate, ignore la pause).
-
-
-### Package helpers (optionnel)
-
-`packages/optifamily_helpers.yaml` = **confort notifications uniquement**
-(plus de logique métier phase/attention — celle-ci vit dans l’intégration) :
-
-| Élément | Rôle |
-|---|---|
-| `input_boolean.optifamily_quiet_hours` | Mode silencieux (branchable sur les blueprints) |
-| `input_boolean.optifamily_quiet_auto` + horaires | Silencieux automatique (défaut 21:00 → **06:00**) |
-| `script.optifamily_notify_resume` | Envoie le résumé via les capteurs d’intégration |
-| `script.optifamily_toggle_quiet` | Bascule le mode silencieux |
-
-Activation typique dans `configuration.yaml` :
-
-```yaml
-homeassistant:
-  packages: !include_dir_named packages
-```
-
-Puis copiez le fichier dans `config/packages/`.
-
-### Migration depuis 1.0.x
-
-1. Mettre à jour l’intégration HACS → redémarrer HA
-2. Recharger les thèmes
-3. Remplacer/re-importer `dashboards/optifamily.yaml`
-4. Mettre à jour le package helpers (sinon doublons phase/attention templates)
-5. Si 2ᵉ crèche : vérifier le nouvel `entity_id` calendrier famille
-6. Re-binder les blueprints sur phase / résumé si besoin
-
-### Exemple YAML : notification message non lu
+### Notification message non lu
 
 ```yaml
 automation:
@@ -233,7 +144,7 @@ automation:
           message: "Vous avez {{ states('sensor.optifamily_messages_non_lus_creche') }} message(s) de la crèche non lu(s)."
 ```
 
-### Exemple : rappel matinal (tous les enfants)
+### Rappel matinal (tous les enfants)
 
 ```yaml
 automation:
@@ -266,6 +177,7 @@ automation:
 | Pause nocturne | **activée** | Pas d’appel API pendant la plage (le premier chargement reste toujours fait) |
 | Début de la pause | **21:00** | Heure locale Home Assistant |
 | Fin de la pause | **06:00** | Les mises à jour reprennent à partir de cette heure |
+| Pause si crèche fermée | **activée** | Moins d’appels hors jours utiles |
 
 Capteur diagnostic : `Dernier rafraîchissement` (horodatage du dernier polling réussi + intervalle en attributs).
 
@@ -286,7 +198,7 @@ Ne partagez jamais vos logs bruts (identifiants, tokens, données personnelles).
 
 - Dépend d’une API non officielle (peut casser en cas de changement côté optiFamily).
 - Pas d’écriture (pas de modification de planning depuis Home Assistant).
-- Les contenus détaillés des messages ne sont pas tous exposés (compteurs avant tout) ; les **transmissions du jour** le sont (détail + journal).
+- Les messages et transmissions exposent un état + attributs riches (`items[]`, `stats`, `texte`…) — voir le [Guide](docs/GUIDE.md).
 
 ---
 
@@ -314,8 +226,9 @@ logger:
 ## Aide & contribution
 
 - Questions / bugs : [Issues GitHub](https://github.com/jokod/ha-optifamily/issues)
+- Guide utilisateur (données & affichage) : [docs/GUIDE.md](docs/GUIDE.md)
 - Pour contribuer au code : voir [CONTRIBUTING.md](CONTRIBUTING.md)
-- Documentation technique (contributeurs) : [docs/](docs/)
+- API optiFamily (contributeurs) : [docs/API.md](docs/API.md)
 
 ---
 
