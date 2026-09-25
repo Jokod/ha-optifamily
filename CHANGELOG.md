@@ -7,6 +7,21 @@ et ce projet adhère au [Versionnement Sémantique](https://semver.org/lang/fr/)
 
 ## [Unreleased]
 
+## [1.1.9] - 2026-09-25
+
+### Fixed
+- Transmissions : plus de « 0 ml » sur les repas solides
+- Transmissions : badge « Non défini » masqué ; type de selles uniquement pour les changes « caca »
+- Affichage du soin crème (`valeur3`) sur les changes
+
+### Changed
+- Journal dashboard : récap via chips enrichis (bib/ml, repas, siestes, changes pipi/selles, arr./dép.) — la carte d’en-tête ne duplique plus le `resume` texte
+- Source unique du dashboard : `custom_components/optifamily/dashboards/` (copie racine `dashboards/` retirée)
+
+### Migration 1.1.8 → 1.1.9
+1. HACS → redémarrer HA
+2. Remplacer/re-importer le dashboard d’exemple si utilisé (`config/optifamily/dashboards/optifamily.yaml` ou copie HACS)
+
 ## [1.1.8] - 2026-09-11
 
 ### Added

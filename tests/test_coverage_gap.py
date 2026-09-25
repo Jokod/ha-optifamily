@@ -98,7 +98,73 @@ def test_transmission_edge_cases() -> None:
         == "ok"
     )
     assert _transmission_detail_text({"type": "repas", "valeur1": "150", "detail": ""}) == "150 ml"
+    assert (
+        _transmission_detail_text(
+            {"type": "repas", "sousType": "solide", "valeur1": "0", "detail": ""}
+        )
+        == ""
+    )
+    assert (
+        _transmission_detail_text(
+            {"type": "repas", "sousType": "biberon", "valeur1": "0", "detail": ""}
+        )
+        == ""
+    )
+    assert (
+        _transmission_detail_text(
+            {"type": "repas", "sousType": "biberon", "valeur1": "peu", "detail": ""}
+        )
+        == "peu"
+    )
     assert _transmission_detail_text({"type": "note", "valeur1": "x", "detail": ""}) == "x"
+
+    change_selles = normalize_transmission(
+        {
+            "heure": "700",
+            "type": "change",
+            "sousType": "couche",
+            "valeur1": "caca",
+            "valeur2": "Mou",
+            "valeur3": "",
+            "detail": "",
+            "complements": "",
+            "icon": "couche",
+        }
+    )
+    assert change_selles is not None
+    assert any(r.get("value") == "Mou" for r in change_selles["rows"])
+
+    # pipi + type de selles renseigné → ignoré (pas pertinent)
+    change_pipi = normalize_transmission(
+        {
+            "heure": "701",
+            "type": "change",
+            "sousType": "couche",
+            "valeur1": "pipi",
+            "valeur2": "Mou",
+            "valeur3": "crème",
+            "detail": "",
+            "complements": "",
+            "icon": "couche",
+        }
+    )
+    assert change_pipi is not None
+    assert not any(r.get("label") == "Type de selles" for r in change_pipi["rows"])
+    assert any(r.get("label") == "Soin" and r.get("value") == "Crème" for r in change_pipi["rows"])
+
+    from custom_components.optifamily.models import _api_defined, _repas_volume_label, _soin_label
+
+    assert _api_defined(None) is False
+    assert _api_defined(" Non défini ") is False
+    assert _api_defined("non defini") is False
+    assert _api_defined("Mou") is True
+    assert _soin_label("creme") == "Crème"
+    assert _soin_label("crème") == "Crème"
+    assert _soin_label("talc") == "Talc"
+    assert (
+        _repas_volume_label({"sousType": "solide", "detail": "purée OK", "valeur1": "0"})
+        == "purée OK"
+    )
     assert (
         _transmission_display_time({"type": "arrivee", "valeur1": "480", "detail": ""}) == "08:00"
     )

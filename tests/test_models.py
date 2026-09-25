@@ -393,6 +393,184 @@ def test_normalize_transmissions_sample() -> None:
     assert items[0]["chips"]
     assert items[0]["color"] == "indigo"
     assert "Début" in items[0]["bloc"]
+    assert not any(r.get("value") == "Non défini" for r in change["rows"])
+
+
+def test_normalize_transmissions_payload_reel_2026_09_25() -> None:
+    """Payload API réel (enfant 82518) — pas de 0 ml / Non défini parasites."""
+    raw = [
+        {
+            "id": 27271016,
+            "date": "2026-09-25",
+            "heure": "538",
+            "type": "arrivee",
+            "sousType": "",
+            "valeur1": "390",
+            "valeur2": "2",
+            "valeur3": "405",
+            "complements": "sieste 7h45 a 8h30",
+            "marquant": False,
+            "icon": "arrivee",
+            "detail": "06:30",
+        },
+        {
+            "id": 27280209,
+            "date": "2026-09-25",
+            "heure": "660",
+            "type": "change",
+            "sousType": "couche",
+            "valeur1": "pipi",
+            "valeur2": "Non défini",
+            "valeur3": "",
+            "complements": "",
+            "marquant": False,
+            "icon": "couche",
+            "detail": "",
+        },
+        {
+            "id": 27279900,
+            "date": "2026-09-25",
+            "heure": "675",
+            "type": "repas",
+            "sousType": "biberon",
+            "valeur1": "70",
+            "valeur2": "0-0-0",
+            "valeur3": "",
+            "complements": "",
+            "marquant": False,
+            "icon": "biberon",
+            "detail": "70 ml",
+        },
+        {
+            "id": 27279958,
+            "date": "2026-09-25",
+            "heure": "675",
+            "type": "repas",
+            "sousType": "solide",
+            "valeur1": "0",
+            "valeur2": "0-2-0",
+            "valeur3": "",
+            "complements": "a très bien mangé la purée (cestour ca qu'elle n'a bu que 70",
+            "marquant": False,
+            "icon": "repas",
+            "detail": "",
+        },
+        {
+            "id": 27280177,
+            "date": "2026-09-25",
+            "heure": "736",
+            "type": "change",
+            "sousType": "couche",
+            "valeur1": "caca",
+            "valeur2": "Non défini",
+            "valeur3": "creme",
+            "complements": "",
+            "marquant": False,
+            "icon": "couche",
+            "detail": "",
+        },
+        {
+            "id": 27282904,
+            "date": "2026-09-25",
+            "heure": "750",
+            "type": "sieste",
+            "sousType": "",
+            "valeur1": "810",
+            "valeur2": "3",
+            "valeur3": None,
+            "complements": "",
+            "marquant": False,
+            "icon": "sieste3",
+            "detail": "01:00",
+        },
+        {
+            "id": 27291403,
+            "date": "2026-09-25",
+            "heure": "941",
+            "type": "change",
+            "sousType": "couche",
+            "valeur1": "pipi",
+            "valeur2": "Non défini",
+            "valeur3": "",
+            "complements": "",
+            "marquant": False,
+            "icon": "couche",
+            "detail": "",
+        },
+        {
+            "id": 27295256,
+            "date": "2026-09-25",
+            "heure": "990",
+            "type": "sieste",
+            "sousType": "",
+            "valeur1": "1020",
+            "valeur2": "0",
+            "valeur3": None,
+            "complements": "",
+            "marquant": False,
+            "icon": "sieste",
+            "detail": "00:30",
+        },
+        {
+            "id": 27294130,
+            "date": "2026-09-25",
+            "heure": "992",
+            "type": "repas",
+            "sousType": "biberon",
+            "valeur1": "150",
+            "valeur2": "0-0-0",
+            "valeur3": "",
+            "complements": "",
+            "marquant": False,
+            "icon": "biberon",
+            "detail": "150 ml",
+        },
+        {
+            "id": 27295479,
+            "date": "2026-09-25",
+            "heure": "1000",
+            "type": "change",
+            "sousType": "couche",
+            "valeur1": "caca",
+            "valeur2": "Non défini",
+            "valeur3": "",
+            "complements": "",
+            "marquant": False,
+            "icon": "couche",
+            "detail": "",
+        },
+    ]
+    from custom_components.optifamily.models import (
+        aggregate_transmissions,
+        normalize_transmissions,
+    )
+
+    items = normalize_transmissions(raw)
+    stats = aggregate_transmissions(raw)
+    assert len(items) == 10
+    assert stats["biberons"] == 2
+    assert stats["biberons_ml"] == 220
+    assert stats["siestes"] == 2
+    assert stats["siestes_minutes"] == 90
+    assert stats["changes"] == 4
+    assert stats["changes_pipi"] == 2
+    assert stats["changes_caca"] == 2
+    assert stats["arrivee"] == "06:30"
+    assert stats["repas"] - stats["biberons"] == 1  # chip « repas » dashboard
+
+    solide = next(i for i in items if i["sous_type"] == "solide")
+    assert solide["detail"] == ""
+    assert "0 ml" not in solide["ligne"]
+    assert "purée" in solide["complements"]
+    assert not any(r.get("label") == "Quantité" for r in solide["rows"])
+    assert any(r.get("kind") == "note" for r in solide["rows"])
+
+    for change in (i for i in items if i["type"] == "change"):
+        assert not any(str(r.get("value") or "").lower() == "non défini" for r in change["rows"])
+        assert not any(r.get("label") == "Type de selles" for r in change["rows"])
+
+    creme = next(i for i in items if i["id"] == 27280177)
+    assert any(r.get("label") == "Soin" and r.get("value") == "Crème" for r in creme["rows"])
 
 
 # --- suite ---

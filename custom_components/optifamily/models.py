@@ -441,6 +441,29 @@ _CHANGE_CONTENU: dict[str, str] = {
     "caca": "Selles",
 }
 
+_CHANGE_SOIN: dict[str, str] = {
+    "creme": "Crème",
+}
+
+_UNDEFINED_API = frozenset({"", "non défini", "non defini", "undefined", "null", "none"})
+
+
+def _api_defined(value: Any) -> bool:
+    """True si la valeur API n'est pas vide / « Non défini »."""
+    return str(value or "").strip().lower() not in _UNDEFINED_API
+
+
+def _soin_label(value: str) -> str:
+    """Libellé soin change (`creme` → Crème ; sinon capitalize)."""
+    key = value.strip().lower()
+    if key in _CHANGE_SOIN:
+        return _CHANGE_SOIN[key]
+    # « crème » (avec accent) → même rendu via capitalize
+    folded = key.replace("è", "e").replace("é", "e").replace("ê", "e")
+    if folded in _CHANGE_SOIN:
+        return _CHANGE_SOIN[folded]
+    return value.strip().capitalize()
+
 
 def format_minutes_clock(value: Any) -> str | None:
     """Convertit des minutes depuis minuit (`585` → `09:45`)."""
@@ -481,15 +504,29 @@ def _transmission_title(raw: dict[str, Any]) -> str:
     return base
 
 
+def _repas_volume_label(raw: dict[str, Any]) -> str:
+    """Volume repas affiché (ignore les solides / 0 ml sans détail)."""
+    sous = str(raw.get("sousType") or raw.get("sous_type") or "").strip().lower()
+    detail = str(raw.get("detail") or "").strip()
+    v1 = str(raw.get("valeur1") or "").strip()
+    if detail:
+        return detail
+    if sous == "solide":
+        return ""
+    if v1.isdigit():
+        return f"{v1} ml" if int(v1) > 0 else ""
+    return v1 if _api_defined(v1) else ""
+
+
 def _transmission_detail_text(raw: dict[str, Any]) -> str:
     """Complément lisible (durée, volume, pipi/caca, etc.)."""
     kind = str(raw.get("type") or "").lower()
     detail = str(raw.get("detail") or "").strip()
     v1 = str(raw.get("valeur1") or "").strip()
     if kind == "change":
-        return v1 if v1 and v1.lower() != "non défini" else detail
+        return v1 if _api_defined(v1) else detail
     if kind == "repas":
-        return detail or (f"{v1} ml" if v1.isdigit() else v1)
+        return _repas_volume_label(raw)
     if kind == "sieste":
         return detail
     if kind in {"arrivee", "depart"}:
@@ -508,6 +545,7 @@ def _transmission_rows(
     sous = str(raw.get("sousType") or raw.get("sous_type") or "").strip().lower()
     v1 = str(raw.get("valeur1") or "").strip()
     v2 = str(raw.get("valeur2") or "").strip()
+    v3 = str(raw.get("valeur3") or "").strip()
     detail = str(raw.get("detail") or "").strip()
     complements = str(raw.get("complements") or "").strip()
     rows: list[dict[str, str]] = []
@@ -528,16 +566,19 @@ def _transmission_rows(
             rows.append({"label": "Heure", "value": heure, "kind": "badge"})
         proprete = _CHANGE_PROPRETE.get(sous, sous.capitalize() if sous else "Aucun")
         rows.append({"label": "Propreté", "value": proprete, "kind": "chip"})
-        contenu = _CHANGE_CONTENU.get(v1.lower(), v1.capitalize() if v1 else "")
+        contenu = _CHANGE_CONTENU.get(v1.lower(), v1.capitalize() if _api_defined(v1) else "")
         if contenu:
             rows.append({"label": "Contenu", "value": contenu, "kind": "chip"})
-        if v2:
+        # Type de selles pertinent uniquement pour un change « caca »
+        if v1.lower() == "caca" and _api_defined(v2):
             rows.append({"label": "Type de selles", "value": v2, "kind": "badge"})
+        if _api_defined(v3):
+            rows.append({"label": "Soin", "value": _soin_label(v3), "kind": "chip"})
     elif kind == "repas":
         heure = format_minutes_clock(raw.get("heure"))
         if heure:
             rows.append({"label": "Heure", "value": heure, "kind": "badge"})
-        volume = detail or (f"{v1} ml" if v1.isdigit() else v1)
+        volume = _repas_volume_label(raw)
         if volume:
             rows.append({"label": "Quantité", "value": volume, "kind": "badge"})
     elif kind in {"arrivee", "depart"}:

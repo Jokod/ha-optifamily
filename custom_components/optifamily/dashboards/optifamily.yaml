@@ -444,7 +444,9 @@ views:
                     {% set n = states(s.entity_id) | int(0) %}
                     {% set raw = state_attr(s.entity_id, 'items') or [] %}
                     {% set stats = state_attr(s.entity_id, 'stats') or {} %}
-                    {% set resume = stats.resume if stats.resume and stats.resume != 'Aucune donnée agrégée' else '' %}
+                    {% set solides = (stats.repas | int(0)) - (stats.biberons | int(0)) %}
+                    {% set has_recap = n > 0 and (stats.biberons or stats.siestes or stats.changes
+                      or stats.arrivee or stats.depart or solides > 0) %}
                     {% set ns.out = ns.out + [{
                       'type': 'custom:mushroom-template-card',
                       'entity': s.entity_id,
@@ -452,27 +454,31 @@ views:
                       'icon_color': 'teal',
                       'primary': (s.attributes.enfant_libelle or 'Enfant') ~ ' · ' ~ n,
                       'secondary': (s.attributes.date_label or s.attributes.date_fr or s.attributes.date or '')
-                        ~ ('\n' ~ resume if resume else '')
                         ~ ('\nAucune transmission pour cette date.' if n == 0 else ''),
                       'multiline_secondary': true,
                       'tap_action': {'action': 'more-info'},
                       'card_mod': {'style': plain}
                     }] %}
-                    {% if n > 0 and (stats.biberons or stats.siestes or stats.changes) %}
+                    {% if has_recap %}
                       {% set ns.out = ns.out + [{
                         'type': 'custom:mushroom-chips-card',
                         'alignment': 'center',
                         'card_mod': {'style': 'ha-card { border: none; box-shadow: none; background: transparent; }'},
                         'chips': (
-                          ([{'type': 'template', 'icon': 'mdi:baby-bottle-outline', 'icon_color': 'cyan',
+                          ([{'type': 'template', 'icon': 'mdi:login', 'icon_color': 'green',
+                            'content': 'Arr. ' ~ stats.arrivee}] if stats.arrivee else [])
+                          + ([{'type': 'template', 'icon': 'mdi:baby-bottle-outline', 'icon_color': 'cyan',
                             'content': (stats.biberons ~ ' bib · ' ~ stats.biberons_ml ~ ' ml') if stats.biberons_ml
                               else (stats.biberons ~ ' bib')}] if stats.biberons else [])
+                          + ([{'type': 'template', 'icon': 'mdi:food-apple-outline', 'icon_color': 'cyan',
+                            'content': solides ~ ' repas'}] if solides > 0 else [])
                           + ([{'type': 'template', 'icon': 'mdi:sleep', 'icon_color': 'indigo',
                             'content': stats.siestes ~ ' sieste · ' ~ (stats.siestes_duree or '00:00')}] if stats.siestes else [])
                           + ([{'type': 'template', 'icon': 'mdi:human-baby-changing-table', 'icon_color': 'amber',
-                            'content': stats.changes ~ ' change(s)'}] if stats.changes else [])
-                          + ([{'type': 'template', 'icon': 'mdi:login', 'icon_color': 'green',
-                            'content': 'Arr. ' ~ stats.arrivee}] if stats.arrivee else [])
+                            'content': stats.changes ~ ' change(s)'
+                              ~ ((' · ' ~ stats.changes_pipi ~ ' pipi') if stats.changes_pipi else '')
+                              ~ ((' · ' ~ stats.changes_caca ~ ' selles') if stats.changes_caca else '')
+                          }] if stats.changes else [])
                           + ([{'type': 'template', 'icon': 'mdi:logout', 'icon_color': 'deep-orange',
                             'content': 'Dép. ' ~ stats.depart}] if stats.depart else [])
                         )
