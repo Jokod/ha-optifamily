@@ -23,12 +23,14 @@ from custom_components.optifamily.models import (
     iter_enfants,
     iter_enfants_enabled,
     iter_year_months,
+    normalize_actualite_detail,
     normalize_actualite_items,
     normalize_album_items,
     normalize_document_items,
     normalize_downloadable_item,
     normalize_facture_items,
     normalize_message_items,
+    normalize_photo_items,
     parse_api_datetime,
     parse_creneau_bounds,
     planning_to_events,
@@ -626,6 +628,22 @@ def test_normalize_downloadable_and_lists() -> None:
     assert album and len(album["photos"]) == 2
     assert album["photos_count"] == 4
 
+    album_count = normalize_downloadable_item(
+        {
+            "id": 9668,
+            "titre": "Sortie",
+            "photos": 2,
+            "date": "2026-09-27",
+            "photo": {"id": 2168060, "date": "2026-09-27", "width": 1440, "height": 1920},
+        },
+        kind="album",
+    )
+    assert album_count and album_count["photos_count"] == 2
+    assert album_count["photos"] == []
+    assert album_count["cover"] and album_count["cover"]["id"] == "2168060"
+    assert album_count["cover"]["downloadable"] is True
+    assert "/photo/2168060/photo" in (album_count["cover"]["download_url"] or "")
+
     album_bad_photos = normalize_downloadable_item({"id": 2, "medias": "not-a-list"}, kind="album")
     assert album_bad_photos and album_bad_photos["photos"] == []
 
@@ -634,7 +652,7 @@ def test_normalize_downloadable_and_lists() -> None:
     )
     assert msg and msg["downloadable"] is False and msg["corps"] == "bonjour"
 
-    albums = [{"id": i, "photos": []} for i in range(25)]
+    albums = [{"id": i, "photos": 0} for i in range(25)]
     assert len(normalize_album_items(albums, limit=3)) == 3
     assert normalize_album_items(None) == []
 
@@ -655,6 +673,40 @@ def test_normalize_downloadable_and_lists() -> None:
         == 5
     )
     assert normalize_actualite_items({"actualites": [{"libelle": "A"}]})[0]["titre"] == "A"
+    rich = normalize_actualite_items(
+        {
+            "actualites": [
+                {
+                    "id": 49792,
+                    "titre": "Réunion",
+                    "date": "2026-09-27",
+                    "vues": 30,
+                    "commentaires": 6,
+                    "nbPhotos": 1,
+                    "photos": [{"id": 2168065, "width": 1920, "height": 1440}],
+                    "description": "Bonjour",
+                    "consultee": True,
+                }
+            ]
+        }
+    )[0]
+    assert rich["vues"] == 30 and rich["nb_photos"] == 1 and rich["consultee"] is True
+    assert rich["photos"][0]["id"] == "2168065"
+    detail = normalize_actualite_detail(
+        {
+            "id": 49792,
+            "titre": "Réunion",
+            "contenu": "<p>Bonjour</p>",
+            "date": "2026-09-27",
+            "vues": 31,
+            "photos": [],
+            "documents": [],
+            "commentaires": [{"id": 1, "famille": "DUPONT", "date": "2026-09-27", "contenu": "OK"}],
+        }
+    )
+    assert detail and detail["commentaires_count"] == 1 and "Bonjour" in detail["contenu"]
+    assert normalize_actualite_detail(None) is None
+    assert len(normalize_photo_items([{"id": 1}, "x"], limit=5)) == 1
 
     msgs = [
         {

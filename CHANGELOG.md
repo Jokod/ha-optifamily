@@ -7,6 +7,29 @@ et ce projet adhère au [Versionnement Sémantique](https://semver.org/lang/fr/)
 
 ## [Unreleased]
 
+## [1.1.10] - 2026-09-30
+
+### Added
+- Albums : select d’album (`optifamily.set_album`) + cache des listes de photos
+- Photos : endpoint `/photo/{id}/photo` + cache disque (pas de re-téléchargement)
+- Actualités : lecture au clic (`optifamily.read_actualite`) — le détail API incrémente une vue et est mis en cache
+
+### Changed
+- Structure albums API : `photos` = compteur, `photo` = couverture ; photos via `/albums/{id}/photos/from/…/to/…`
+- Capteur Actualités : aperçu liste seul au polling ; détail / commentaires uniquement après clic
+- Dashboard Médias / Infos alignés (chips albums, lecture actualité)
+
+### Fixed
+- Cache albums : un échec réseau ne bloque plus les essais suivants
+- Albums volumineux : pagination jusqu’au `total` (plus de plafond silencieux à 36)
+- Photos locales réindexées après redémarrage HA ; album disparu désélectionné
+- Lecture actualité : sélection uniquement après succès (pas de « vue » fantôme en UI)
+- Photos albums vs actualités stockées dans des dossiers séparés (`www/optifamily/albums/` et `…/actualites/`)
+
+### Migration 1.1.9 → 1.1.10
+1. HACS → redémarrer HA
+2. Remplacer/re-importer le dashboard d’exemple si utilisé
+
 ## [1.1.9] - 2026-09-25
 
 ### Fixed

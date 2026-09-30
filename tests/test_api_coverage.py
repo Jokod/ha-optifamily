@@ -152,8 +152,16 @@ async def test_endpoints(api_client: OptieFamilyApiClient) -> None:
             payload=[{"id": 1}],
         )
         mocked.get(
+            _url("/api/auth/v3/opti-family/enfant/2001/albums/9668/photos/from/0/to/36"),
+            payload={"total": 2, "photos": [{"id": 2168059}, {"id": 2168060}]},
+        )
+        mocked.get(
             _url("/api/auth/v3/opti-family/actualites/from/0/to/20"),
             payload={"total": 1},
+        )
+        mocked.get(
+            _url("/api/auth/v3/opti-family/actualite/49792"),
+            payload={"id": 49792, "titre": "Réunion", "contenu": "<p>x</p>", "vues": 1},
         )
         mocked.get(
             _url("/api/auth/v3/opti-family/creche"),
@@ -169,7 +177,11 @@ async def test_endpoints(api_client: OptieFamilyApiClient) -> None:
         assert (await api_client.get_planning(2001, 2026, 9))["label"] == "P"
         assert len(await api_client.get_transmissions(2001, date(2026, 9, 3))) == 1
         assert len(await api_client.get_albums(2001)) == 1
+        album_photos = await api_client.get_album_photos(2001, 9668)
+        assert album_photos["total"] == 2
         assert (await api_client.get_actualites())["total"] == 1
+        assert (await api_client.get_actualite(49792))["id"] == 49792
+        assert api_client.photo_path(2168059).endswith("/photo/2168059/photo")
         assert (await api_client.get_creche())["nom"] == "Les Petits"
         assert len(await api_client.get_documents()) == 1
         assert await api_client.get_facturation() == []

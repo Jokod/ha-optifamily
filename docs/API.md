@@ -183,7 +183,10 @@ Sans body, le backend répond `400` :
 | `GET` | `/api/auth/v3/opti-family/enfant/{id}/planning/{year}/{month}` | ✅ Bearer | ✅ Observé |
 | `GET` | `/api/auth/v3/opti-family/enfant/{id}/transmissions/{date}` | ✅ Bearer | ✅ Observé |
 | `GET` | `/api/auth/v3/opti-family/enfant/{id}/albums` | ✅ Bearer | ✅ Observé |
+| `GET` | `/api/auth/v3/opti-family/enfant/{id}/albums/{albumId}/photos/from/{from}/to/{to}` | ✅ Bearer | ✅ Observé |
+| `GET` | `/api/auth/v3/opti-family/photo/{photoId}/photo` | ✅ Bearer | ✅ Observé (binaire) |
 | `GET` | `/api/auth/v3/opti-family/actualites/from/{from}/to/{to}` | ✅ Bearer | ✅ Observé |
+| `GET` | `/api/auth/v3/opti-family/actualite/{id}` | ✅ Bearer | ✅ Observé (**+1 vue**) |
 | `GET` | `/api/auth/v3/opti-family/messages` | ✅ Bearer | ✅ Observé |
 | `GET` | `/api/auth/v3/opti-family/creche` | ✅ Bearer | ✅ Observé |
 | `GET` | `/api/auth/v3/opti-family/documents/creche/{crecheId}` | ✅ Bearer | ✅ Observé |
@@ -297,19 +300,98 @@ Champs observés (exemple) :
 
 ### `GET /api/auth/v3/opti-family/enfant/{enfantId}/albums`
 
-- Liste d’albums / photos ; peut être `[]`
+Liste des albums d’un enfant (métadonnées + photo de couverture). Peut être `[]`.
 
-### `GET /api/auth/v3/opti-family/actualites/from/{from}/to/{to}`
+```json
+[
+  {
+    "id": 9668,
+    "titre": "Sortie parc",
+    "photos": 2,
+    "date": "2026-09-27",
+    "photo": {
+      "id": 2168060,
+      "date": "2026-09-27",
+      "description": null,
+      "width": 1440,
+      "height": 1920
+    }
+  }
+]
+```
 
-| Paramètre | Description |
+| Champ | Description |
 |---|---|
-| `from` | Offset de début |
-| `to` | Offset / borne de fin |
+| `photos` | **Compteur** (int), pas une liste |
+| `photo` | Couverture (objet photo) |
+
+Dans HA : le polling charge uniquement cette liste. Les photos d’un album sont demandées **au select** (`optifamily.set_album`) puis mises en cache.
+
+### `GET /api/auth/v3/opti-family/enfant/{enfantId}/albums/{albumId}/photos/from/{from}/to/{to}`
+
+Photos d’un album (paginé).
 
 ```json
 {
-  "total": 0,
-  "actualites": []
+  "total": 2,
+  "photos": [
+    {"id": 2168059, "date": "2026-09-27", "description": null, "width": 1440, "height": 1920}
+  ]
+}
+```
+
+### `GET /api/auth/v3/opti-family/photo/{photoId}/photo`
+
+Binaire image (même endpoint pour albums **et** actualités).
+
+Côté HA, `optifamily.download` enregistre le fichier localement (pas de re-téléchargement s’il existe déjà) :
+
+| Source | Dossier | URL |
+|--------|---------|-----|
+| Album (`source: albums`) | `config/www/optifamily/albums/` | `/local/optifamily/albums/{id}.jpg` |
+| Actualité (`source: actualites`) | `config/www/optifamily/actualites/` | `/local/optifamily/actualites/{id}.jpg` |
+
+### `GET /api/auth/v3/opti-family/actualites/from/{from}/to/{to}`
+
+Liste d’actualités (aperçu). **Ne charge pas le détail** (éviter les vues inutiles).
+
+```json
+{
+  "total": 2,
+  "actualites": [
+    {
+      "id": 49792,
+      "titre": "Réunion de rentrée",
+      "date": "2026-09-27",
+      "vues": 30,
+      "commentaires": 6,
+      "nbPhotos": 0,
+      "photos": [],
+      "description": "…",
+      "consultee": true
+    }
+  ]
+}
+```
+
+### `GET /api/auth/v3/opti-family/actualite/{id}`
+
+Détail d’une actualité (`contenu` HTML, commentaires, photos…). **Incrémente automatiquement une vue**.
+
+Dans HA : appelé **uniquement au clic** (`optifamily.read_actualite`), puis mis en cache (pas de second appel = pas de vue supplémentaire).
+
+```json
+{
+  "id": 49792,
+  "titre": "…",
+  "contenu": "<p>…</p>",
+  "date": "2026-09-27",
+  "vues": 31,
+  "photos": [],
+  "documents": [],
+  "commentaires": [
+    {"id": 9937, "famille": "NOM", "date": "2026-09-27", "contenu": "…"}
+  ]
 }
 ```
 
@@ -452,7 +534,9 @@ Toujours remplacer par : `EMAIL`, `PASSWORD`, `ACCESS_TOKEN`, `CRECHE_ID`, `ENFA
 | Liste enfants | `/enfants` |
 | Présence / créneaux | `/enfant/{id}/planning/...` (+ plateforme `calendar`) |
 | Transmissions | `/enfant/{id}/transmissions/{date}` |
-| Albums | `/enfant/{id}/albums` |
+| Albums | `/enfant/{id}/albums` (+ photos au select) |
+| Photo binaire | `/photo/{id}/photo` (cache local HA) |
+| Actualités | liste `/actualites/from/…` ; détail `/actualite/{id}` **au clic seulement** |
 | Messages non lus (crèche / moi) | `/messages` (`sender`) |
 | Actualités / docs / factures | endpoints correspondants (compteurs) |
 

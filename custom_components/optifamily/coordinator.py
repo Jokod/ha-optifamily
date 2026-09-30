@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, date, datetime, timedelta
 import logging
+from pathlib import Path
 from time import monotonic
 from typing import Any
 
@@ -24,6 +25,8 @@ from .const import (
     CONF_PAUSE_UPDATES_END,
     CONF_PAUSE_UPDATES_START,
     CONF_PAUSE_WHEN_CLOSED,
+    DEFAULT_ACTUALITES_TO,
+    DEFAULT_ALBUM_PHOTOS_TO,
     DEFAULT_PAUSE_UPDATES,
     DEFAULT_PAUSE_UPDATES_END,
     DEFAULT_PAUSE_UPDATES_START,
@@ -33,6 +36,8 @@ from .const import (
     DOCUMENTS_SCOPE_ENFANT,
     DOCUMENTS_SCOPES,
     DOMAIN,
+    PHOTO_DIR_ALBUMS,
+    PHOTO_SOURCES,
     PLANNING_CACHE_TTL,
     PLANNING_ERROR_RETRY,
     STORAGE_KEY_PREFIX,
@@ -151,6 +156,15 @@ class OptieFamilyCoordinator(DataUpdateCoordinator[OptieFamilyData]):
         self.transmissions_journal: dict[int, list[dict[str, Any]]] = {}
         self.documents_scope: str = DOCUMENTS_SCOPE_CRECHE
         self.documents_enfant_id: int | None = None
+        # Albums : select + cache des listes de photos (pas de re-fetch à chaque affichage)
+        self.selected_album: dict[int, int | None] = {}
+        self.album_photos_cache: dict[tuple[int, int], dict[str, Any]] = {}
+        # Actualités : détail uniquement au clic (GET détail = +1 vue) + cache
+        self.selected_actualite_id: int | None = None
+        self.actualite_detail_cache: dict[int, dict[str, Any]] = {}
+        # Photos déjà téléchargées → /local/optifamily/{albums|actualites}/…
+        # Clé : "{source}:{photo_id}" (ex. albums:2168059)
+        self.photo_local_urls: dict[str, str] = {}
         _LOGGER.debug("Intervalle de rafraîchissement OptiFamily : %ss", scan_interval)
         self._store: Store = Store(
             hass,
@@ -344,6 +358,183 @@ class OptieFamilyCoordinator(DataUpdateCoordinator[OptieFamilyData]):
             self.documents_enfant_id = int(enfant_id) if enfant_id is not None else None
         self.async_update_listeners()
 
+    async def async_set_album(self, enfant_id: int, album_id: int | None) -> None:
+        """Sélectionne un album et charge ses photos (cache mémoire, pas de re-fetch)."""
+        eid = int(enfant_id)
+        aid = int(album_id) if album_id is not None else None
+        self.selected_album[eid] = aid
+        if aid is not None:
+            await self._ensure_album_photos(eid, aid)
+        self.async_update_listeners()
+
+    async def _ensure_album_photos(self, enfant_id: int, album_id: int) -> dict[str, Any]:
+        """Charge la liste des photos d'un album si absente du cache (pagination)."""
+        key = (enfant_id, album_id)
+        cached = self.album_photos_cache.get(key)
+        if cached is not None:
+            return cached
+
+        photos: list[dict[str, Any]] = []
+        total = 0
+        offset = 0
+        page = DEFAULT_ALBUM_PHOTOS_TO
+        try:
+            while True:
+                payload = await self.client.get_album_photos(
+                    enfant_id, album_id, offset, offset + page
+                )
+                batch = list(payload.get("photos") or [])
+                total = int(payload.get("total", total if photos else len(batch)) or 0)
+                photos.extend(p for p in batch if isinstance(p, dict))
+                if not batch or len(photos) >= total:
+                    break
+                offset = len(photos)
+                # Garde-fou anti-boucle si l'API ignore la pagination
+                if offset > 500:
+                    _LOGGER.warning(
+                        "Pagination album %s tronquée (enfant %s) après %s photos",
+                        album_id,
+                        enfant_id,
+                        len(photos),
+                    )
+                    break
+        except Exception as err:
+            _LOGGER.warning(
+                "Impossible de récupérer les photos album %s (enfant %s) : %s",
+                album_id,
+                enfant_id,
+                err,
+            )
+            # Ne pas cacher un échec : un nouvel essai reste possible
+            return {"total": 0, "photos": []}
+
+        result = {"total": total or len(photos), "photos": photos}
+        self.album_photos_cache[key] = result
+        return result
+
+    def get_selected_album_photos(self, enfant_id: int) -> dict[str, Any]:
+        """Photos de l'album sélectionné (depuis le cache, sans appel API)."""
+        aid = self.selected_album.get(enfant_id)
+        if aid is None:
+            return {"total": 0, "photos": [], "album_id": None}
+        cached = self.album_photos_cache.get((enfant_id, aid)) or {
+            "total": 0,
+            "photos": [],
+        }
+        return {
+            "album_id": aid,
+            "total": cached.get("total", len(cached.get("photos") or [])),
+            "photos": list(cached.get("photos") or []),
+        }
+
+    async def async_read_actualite(self, actualite_id: int | str) -> dict[str, Any] | None:
+        """Ouvre une actualité au clic. Cache le détail pour ne pas renvoyer de vues."""
+        try:
+            aid = int(actualite_id)
+        except (TypeError, ValueError):
+            _LOGGER.warning("Identifiant actualité invalide : %s", actualite_id)
+            return None
+        cached = self.actualite_detail_cache.get(aid)
+        if cached is not None:
+            self.selected_actualite_id = aid
+            self.async_update_listeners()
+            return cached
+        try:
+            detail = await self.client.get_actualite(aid)
+        except Exception as err:
+            _LOGGER.warning("Impossible de lire l'actualité %s : %s", aid, err)
+            return None
+        if not isinstance(detail, dict) or detail.get("id") is None:
+            _LOGGER.warning("Réponse actualité %s invalide", aid)
+            return None
+        self.actualite_detail_cache[aid] = detail
+        self.selected_actualite_id = aid
+        self.async_update_listeners()
+        return detail
+
+    def get_selected_actualite_detail(self) -> dict[str, Any] | None:
+        """Détail de l'actualité ouverte (cache, sans appel API)."""
+        aid = self.selected_actualite_id
+        if aid is None:
+            return None
+        return self.actualite_detail_cache.get(aid)
+
+    @staticmethod
+    def photo_cache_key(source: str, photo_id: str | int) -> str:
+        """Clé de cache locale albums vs actualités."""
+        src = source if source in PHOTO_SOURCES else PHOTO_DIR_ALBUMS
+        return f"{src}:{photo_id}"
+
+    def remember_photo_local_url(
+        self, photo_id: str, local_url: str, *, source: str = PHOTO_DIR_ALBUMS
+    ) -> None:
+        """Mémorise l'URL locale d'une photo déjà téléchargée."""
+        self.photo_local_urls[self.photo_cache_key(source, photo_id)] = local_url
+        self.async_update_listeners()
+
+    def get_photo_local_url(
+        self, photo_id: str | int, *, source: str = PHOTO_DIR_ALBUMS
+    ) -> str | None:
+        """URL /local/… si la photo est déjà sur disque."""
+        return self.photo_local_urls.get(self.photo_cache_key(source, photo_id))
+
+    def hydrate_photo_local_urls(self) -> None:
+        """Indexe www/optifamily/albums/ et www/optifamily/actualites/."""
+        try:
+            www = Path(self.hass.config.path("www")) / "optifamily"
+        except Exception:
+            return
+        if not www.is_dir():
+            return
+        for source in PHOTO_SOURCES:
+            folder = www / source
+            if not folder.is_dir():
+                continue
+            for path in folder.iterdir():
+                if not path.is_file() or path.stat().st_size <= 0:
+                    continue
+                photo_id = path.stem
+                if photo_id:
+                    self.photo_local_urls[self.photo_cache_key(source, photo_id)] = (
+                        f"/local/optifamily/{source}/{path.name}"
+                    )
+
+    def _invalidate_stale_album_photo_caches(self, albums_by_enfant: dict[int, list]) -> None:
+        """Invalide le cache photos si le compteur d'un album a changé."""
+        counts: dict[tuple[int, int], int] = {}
+        album_ids_by_enfant: dict[int, set[int]] = {}
+        for eid, albums in albums_by_enfant.items():
+            ids: set[int] = set()
+            for album in albums or []:
+                if not isinstance(album, dict) or album.get("id") is None:
+                    continue
+                try:
+                    aid = int(album["id"])
+                except (TypeError, ValueError):
+                    continue
+                ids.add(aid)
+                raw_count = album.get("photos")
+                if isinstance(raw_count, int):
+                    counts[(eid, aid)] = raw_count
+                elif isinstance(raw_count, list):
+                    counts[(eid, aid)] = len(raw_count)
+            album_ids_by_enfant[eid] = ids
+        stale = [
+            key
+            for key, cached in self.album_photos_cache.items()
+            if key in counts and int(cached.get("total", -1)) != counts[key]
+        ]
+        for key in stale:
+            self.album_photos_cache.pop(key, None)
+        # Désélectionne un album disparu de la liste
+        for eid, aid in list(self.selected_album.items()):
+            if aid is None:
+                continue
+            known = album_ids_by_enfant.get(eid)
+            if known is not None and aid not in known:
+                self.selected_album[eid] = None
+                self.album_photos_cache.pop((eid, aid), None)
+
     # ------------------------------------------------------------------
     # Mise à jour
     # ------------------------------------------------------------------
@@ -413,7 +604,7 @@ class OptieFamilyCoordinator(DataUpdateCoordinator[OptieFamilyData]):
                         err,
                     )
 
-            result.actualites = await self.client.get_actualites(0, 20)
+            result.actualites = await self.client.get_actualites(0, DEFAULT_ACTUALITES_TO)
             result.messages = await self.client.get_messages()
             try:
                 result.creche = await self.client.get_creche()
@@ -460,6 +651,14 @@ class OptieFamilyCoordinator(DataUpdateCoordinator[OptieFamilyData]):
 
         self.last_sync_at = datetime.now(UTC)
         self._data_day = today
+        self.hydrate_photo_local_urls()
+        self._invalidate_stale_album_photo_caches(result.albums)
+        # Recharger les albums sélectionnés dont le cache a été invalidé
+        for eid, aid in list(self.selected_album.items()):
+            if aid is None:
+                continue
+            if (eid, aid) not in self.album_photos_cache:
+                await self._ensure_album_photos(eid, aid)
         if self.transmissions_view_date == today:
             self.transmissions_journal = {
                 eid: list(items) for eid, items in result.transmissions.items()

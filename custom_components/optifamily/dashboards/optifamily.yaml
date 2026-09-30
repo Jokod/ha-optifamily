@@ -600,6 +600,44 @@ views:
               heading_style: title
               icon: mdi:image-album
             - type: custom:auto-entities
+              show_empty: false
+              card:
+                type: custom:mushroom-chips-card
+                alignment: start
+                card_mod: {style: "ha-card { border: none; box-shadow: none; background: transparent; }"}
+              card_param: chips
+              filter:
+                template: >
+                  {% set phase = states.sensor | selectattr('attributes', 'contains', 'optifamily_kind')
+                    | selectattr('attributes.optifamily_kind', 'eq', 'phase_journee') | list %}
+                  {% set entry = phase[0].attributes.config_entry_id if phase else none %}
+                  {% set ns = namespace(chips=[]) %}
+                  {% for s in states.sensor | selectattr('attributes', 'contains', 'optifamily_kind')
+                    | selectattr('attributes.optifamily_kind', 'eq', 'albums') | list
+                    if entry is none or s.attributes.config_entry_id == entry %}
+                    {% set eid = s.attributes.enfant_id %}
+                    {% set sel = s.attributes.selected_album_id %}
+                    {% set ns.chips = ns.chips + [{
+                      'type': 'template',
+                      'icon': 'mdi:baby-face-outline',
+                      'content': s.attributes.enfant_libelle or ('Enfant ' ~ eid),
+                      'tap_action': {'action': 'more-info', 'entity': s.entity_id},
+                    }] %}
+                    {% for album in (state_attr(s.entity_id, 'items') or [])[:12] %}
+                      {% set aid = album.id if album.id is defined else none %}
+                      {% set ns.chips = ns.chips + [{
+                        'type': 'template',
+                        'icon': 'mdi:folder-image',
+                        'icon_color': 'teal' if sel is not none and (sel | string) == (aid | string) else '',
+                        'content': (album.titre or album.label or 'Album')[:28],
+                        'tap_action': {'action': 'call-service', 'service': 'optifamily.set_album',
+                                      'data': {'enfant_id': eid, 'album_id': aid,
+                                               'config_entry_id': s.attributes.config_entry_id}},
+                      }] %}
+                    {% endfor %}
+                  {% endfor %}
+                  {{ ns.chips }}
+            - type: custom:auto-entities
               show_empty: true
               card: {type: vertical-stack}
               card_param: cards
@@ -612,46 +650,50 @@ views:
                   {% set plain = 'ha-card { border: none; box-shadow: none; }' %}
                   {% for s in states.sensor | selectattr('attributes', 'contains', 'optifamily_kind') | selectattr('attributes.optifamily_kind', 'eq', 'albums') | list
                     if entry is none or s.attributes.config_entry_id == entry %}
+                    {% set sel = s.attributes.selected_album_id %}
+                    {% set tot = s.attributes.selected_total | int(0) %}
+                    {% set photos = state_attr(s.entity_id, 'selected_photos') or [] %}
+                    {% set alb = namespace(label='Aucun album sélectionné') %}
+                    {% for album in (state_attr(s.entity_id, 'items') or []) %}
+                      {% if sel is not none and (album.id | string) == (sel | string) %}
+                        {% set alb.label = album.titre or album.label or ('Album ' ~ sel) %}
+                      {% endif %}
+                    {% endfor %}
                     {% set ns.out = ns.out + [{
                       'type': 'custom:mushroom-template-card',
                       'entity': s.entity_id,
                       'icon': 'mdi:image-multiple-outline',
                       'primary': (s.attributes.enfant_libelle or 'Enfant') ~ ' · ' ~ (states(s.entity_id) | int(0)) ~ ' album(s)',
-                      'secondary': 'Détail capteur',
+                      'secondary': (alb.label ~ ' · ' ~ tot ~ ' photo(s)') if sel else 'Choisissez un album ci-dessus',
                       'tap_action': {'action': 'more-info'},
-                      'card_mod': {'style': plain},
+                      'card_mod': {'style': 'ha-card { border: none; box-shadow: none; border-left: 3px solid var(--info-color, #2B6CB0); }'},
                     }] %}
-                    {% for album in (state_attr(s.entity_id, 'items') or [])[:6] %}
-                      {% set photos = album.photos or album.items or [] %}
-                      {% set ns.out = ns.out + [{
-                        'type': 'custom:mushroom-template-card',
-                        'entity': s.entity_id,
-                        'icon': 'mdi:folder-image',
-                        'primary': album.titre or album.label or album.nom or 'Album',
-                        'secondary': (photos | length) ~ ' photo(s)',
-                        'tap_action': {'action': 'more-info'},
-                        'card_mod': {'style': plain},
-                      }] %}
-                      {% for photo in photos[:10] %}
-                        {% set can = photo.downloadable if photo.downloadable is defined else true %}
+                    {% if sel %}
+                      {% for photo in photos[:36] %}
                         {% set pid = photo.id if photo.id is defined else none %}
+                        {% set cached = photo.cached if photo.cached is defined else false %}
+                        {% set local = photo.local_url if photo.local_url is defined else none %}
                         {% set ns.out = ns.out + [{
                           'type': 'custom:mushroom-template-card',
                           'entity': s.entity_id,
                           'layout': 'horizontal',
-                          'icon': 'mdi:image-outline' if can else 'mdi:image-off-outline',
+                          'icon': 'mdi:image-check' if cached else 'mdi:image-outline',
+                          'icon_color': 'teal' if cached else '',
                           'primary': photo.titre or photo.label or ('Photo ' ~ (pid or '')),
-                          'secondary': 'Appeler téléchargement' if can and pid else 'Non téléchargeable',
+                          'secondary': (('En cache · ' ~ local) if cached and local else ('Télécharger · ' ~ (photo.date_fr or photo.date or ''))),
                           'tap_action': (
+                            {'action': 'url', 'url_path': local}
+                            if cached and local else
                             {'action': 'call-service', 'service': 'optifamily.download',
-                             'data': {'kind': 'photo', 'id': pid, 'enfant_id': s.attributes.enfant_id,
+                             'data': {'kind': 'photo', 'id': pid, 'source': 'albums',
+                                      'enfant_id': s.attributes.enfant_id,
                                       'config_entry_id': s.attributes.config_entry_id}}
-                            if can and pid else {'action': 'more-info'}
+                            if pid else {'action': 'more-info'}
                           ),
                           'card_mod': {'style': plain},
                         }] %}
                       {% endfor %}
-                    {% endfor %}
+                    {% endif %}
                   {% endfor %}
                   {{ ns.out if ns.out else [{'type': 'custom:mushroom-template-card', 'icon': 'mdi:image-off-outline', 'primary': 'Aucun album', 'tap_action': {'action': 'none'}, 'card_mod': {'style': plain}}] }}
 
@@ -849,24 +891,85 @@ views:
                   {% set plain = 'ha-card { border: none; box-shadow: none; }' %}
                   {% for s in states.sensor | selectattr('attributes', 'contains', 'optifamily_kind') | selectattr('attributes.optifamily_kind', 'eq', 'actualites_total') | list
                     if entry is none or s.attributes.config_entry_id == entry %}
+                    {% set selected = s.attributes.selected_id %}
+                    {% set detail = state_attr(s.entity_id, 'detail') %}
                     {% set ns.out = ns.out + [{
                       'type': 'custom:mushroom-template-card', 'entity': s.entity_id,
                       'icon': 'mdi:newspaper-variant-outline',
                       'primary': (states(s.entity_id) | int(0)) ~ ' actualité(s)',
+                      'secondary': 'Touchez une actualité pour la lire (1 vue API, puis cache)',
                       'tap_action': {'action': 'more-info'},
                       'card_mod': {'style': plain},
                     }] %}
                     {% for item in (state_attr(s.entity_id, 'items') or [])[:15] %}
+                      {% set iid = item.id if item.id is defined else none %}
+                      {% set is_open = selected is not none and iid is not none and (selected | string) == (iid | string) %}
+                      {% set n_photos = item.nb_photos | int(0) %}
+                      {% set n_com = item.commentaires | int(0) %}
                       {% set ns.out = ns.out + [{
                         'type': 'custom:mushroom-template-card', 'entity': s.entity_id,
                         'layout': 'horizontal', 'multiline_secondary': true,
-                        'icon': 'mdi:newspaper',
+                        'icon': 'mdi:newspaper-check' if is_open else ('mdi:newspaper-variant' if item.consultee else 'mdi:newspaper'),
+                        'icon_color': 'teal' if is_open else '',
                         'primary': item.titre or item.title or 'Actualité',
-                        'secondary': (item.date_fr or item.date or '') ~ ('\n' ~ (item.resume or item.texte or item.texte_court or item.body or '')),
-                        'tap_action': {'action': 'more-info'},
+                        'secondary': (item.date_fr or item.date or '')
+                          ~ (' · ' ~ n_photos ~ ' photo(s)' if n_photos else '')
+                          ~ (' · ' ~ n_com ~ ' com.' if n_com else '')
+                          ~ ('\n' ~ (item.resume or item.description or '')[:160]),
+                        'tap_action': (
+                          {'action': 'call-service', 'service': 'optifamily.read_actualite',
+                           'data': {'id': iid, 'config_entry_id': s.attributes.config_entry_id}}
+                          if iid else {'action': 'more-info'}
+                        ),
                         'card_mod': {'style': plain},
                       }] %}
                     {% endfor %}
+                    {% if detail and selected %}
+                      {% set ns.out = ns.out + [{
+                        'type': 'custom:mushroom-template-card', 'entity': s.entity_id,
+                        'layout': 'horizontal', 'multiline_secondary': true,
+                        'icon': 'mdi:text-box-outline',
+                        'primary': 'Lecture · ' ~ (detail.titre or 'Actualité'),
+                        'secondary': (detail.date_fr or detail.date or '')
+                          ~ (' · ' ~ (detail.vues | int(0)) ~ ' vue(s)')
+                          ~ (' · ' ~ (detail.commentaires_count | int(0)) ~ ' commentaire(s)')
+                          ~ '\n' ~ ((detail.contenu or '') | striptags)[:500],
+                        'tap_action': {'action': 'more-info'},
+                        'card_mod': {'style': 'ha-card { border: none; box-shadow: none; border-left: 3px solid var(--primary-color); }'},
+                      }] %}
+                      {% for photo in (detail.photos or [])[:12] %}
+                        {% set pid = photo.id if photo.id is defined else none %}
+                        {% set cached = photo.cached if photo.cached is defined else false %}
+                        {% set local = photo.local_url if photo.local_url is defined else none %}
+                        {% set ns.out = ns.out + [{
+                          'type': 'custom:mushroom-template-card', 'entity': s.entity_id,
+                          'layout': 'horizontal',
+                          'icon': 'mdi:image-check' if cached else 'mdi:image-outline',
+                          'primary': photo.titre or ('Photo ' ~ (pid or '')),
+                          'secondary': 'En cache' if cached else 'Télécharger',
+                          'tap_action': (
+                            {'action': 'url', 'url_path': local}
+                            if cached and local else
+                            {'action': 'call-service', 'service': 'optifamily.download',
+                             'data': {'kind': 'photo', 'id': pid, 'source': 'actualites',
+                                      'config_entry_id': s.attributes.config_entry_id}}
+                            if pid else {'action': 'more-info'}
+                          ),
+                          'card_mod': {'style': plain},
+                        }] %}
+                      {% endfor %}
+                      {% for com in (detail.commentaires or [])[:8] %}
+                        {% set ns.out = ns.out + [{
+                          'type': 'custom:mushroom-template-card', 'entity': s.entity_id,
+                          'layout': 'horizontal', 'multiline_secondary': true,
+                          'icon': 'mdi:comment-outline',
+                          'primary': com.famille or 'Commentaire',
+                          'secondary': (com.date or '') ~ ('\n' ~ (com.contenu or '')[:200]),
+                          'tap_action': {'action': 'none'},
+                          'card_mod': {'style': plain},
+                        }] %}
+                      {% endfor %}
+                    {% endif %}
                   {% endfor %}
                   {{ ns.out if ns.out else [{'type': 'custom:mushroom-template-card', 'icon': 'mdi:newspaper-remove', 'primary': 'Aucune actualité', 'tap_action': {'action': 'none'}, 'card_mod': {'style': plain}}] }}
 

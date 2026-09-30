@@ -11,7 +11,9 @@ from typing import Any
 import aiohttp
 
 from .const import (
+    API_ACTUALITE,
     API_ACTUALITES,
+    API_ALBUM_PHOTOS,
     API_ALBUMS,
     API_BASE_URL,
     API_CRECHE,
@@ -24,10 +26,13 @@ from .const import (
     API_LOGOUT,
     API_ME,
     API_MESSAGES,
+    API_PHOTO,
     API_PLANNING,
     API_PRE_LOGIN,
     API_REFRESH,
     API_TRANSMISSIONS,
+    DEFAULT_ACTUALITES_TO,
+    DEFAULT_ALBUM_PHOTOS_TO,
     HTTP_TIMEOUT,
 )
 from .exceptions import (
@@ -322,13 +327,36 @@ class OptieFamilyApiClient:
         return _as_list(await self._request("GET", path))
 
     async def get_albums(self, enfant_id: int) -> list[dict[str, Any]]:
-        """Retourne les albums d'un enfant."""
+        """Retourne la liste des albums d'un enfant (métadonnées + couverture)."""
         path = API_ALBUMS.format(enfant_id=enfant_id)
         return _as_list(await self._request("GET", path))
 
-    async def get_actualites(self, from_: int = 0, to: int = 20) -> dict[str, Any]:
-        """Retourne les actualités."""
+    async def get_album_photos(
+        self,
+        enfant_id: int,
+        album_id: int,
+        from_: int = 0,
+        to: int = DEFAULT_ALBUM_PHOTOS_TO,
+    ) -> dict[str, Any]:
+        """Retourne les photos d'un album (paginé). Ne pas rappeler à chaque affichage."""
+        path = API_ALBUM_PHOTOS.format(enfant_id=enfant_id, album_id=album_id, from_=from_, to=to)
+        return _as_dict(await self._request("GET", path))
+
+    @staticmethod
+    def photo_path(photo_id: int | str) -> str:
+        """Chemin API du binaire photo (à télécharger une seule fois puis cacher)."""
+        return API_PHOTO.format(photo_id=photo_id)
+
+    async def get_actualites(
+        self, from_: int = 0, to: int = DEFAULT_ACTUALITES_TO
+    ) -> dict[str, Any]:
+        """Retourne la liste des actualités (sans détail — lecture = une vue)."""
         path = API_ACTUALITES.format(from_=from_, to=to)
+        return _as_dict(await self._request("GET", path))
+
+    async def get_actualite(self, actualite_id: int | str) -> dict[str, Any]:
+        """Détail d'une actualité. Incrémente automatiquement une vue côté API."""
+        path = API_ACTUALITE.format(actualite_id=actualite_id)
         return _as_dict(await self._request("GET", path))
 
     async def get_messages(self) -> list[dict[str, Any]]:

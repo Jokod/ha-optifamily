@@ -936,6 +936,7 @@ def normalize_downloadable_item(
         "name",
         "filename",
         "fileName",
+        "description",
     )
     download_url = _pick_str(
         raw,
@@ -949,6 +950,12 @@ def normalize_downloadable_item(
         "path",
     )
     media_id = _pick_id(raw, "mediaId", "media_id", "fichierId", "fileId") or item_id
+    # Photos OptiFamily : binaire via /photo/{id}/photo (pas d'URL dans le JSON)
+    if kind == "photo" and item_id and not download_url:
+        from .const import API_PHOTO
+
+        download_url = API_PHOTO.format(photo_id=item_id)
+        media_id = item_id
     downloadable = bool(download_url or media_id)
     item: dict[str, Any] = {
         "id": item_id,
@@ -961,18 +968,50 @@ def normalize_downloadable_item(
         "date": _pick_str(raw, "date", "createdAt", "created_at", "dateCreation"),
     }
     item["date_fr"] = format_date_fr(item["date"]) if item["date"] else ""
+    if kind == "photo":
+        width = raw.get("width")
+        height = raw.get("height")
+        if width is not None:
+            item["width"] = width
+        if height is not None:
+            item["height"] = height
+        if raw.get("description") is not None:
+            item["description"] = raw.get("description")
     if kind == "album":
-        photos_raw = raw.get("photos") or raw.get("medias") or raw.get("images") or []
+        # API v3 : `photos` = compteur (int) ; couverture = `photo` (objet)
+        # Ancien format : `photos` / `medias` / `images` = liste imbriquée
+        photos_raw = raw.get("photos")
+        medias_raw = raw.get("medias") or raw.get("images")
         photos: list[dict[str, Any]] = []
-        if isinstance(photos_raw, list):
+        photos_count: int
+        if isinstance(photos_raw, int):
+            photos_count = photos_raw
+        elif isinstance(photos_raw, list):
+            photos_count = len(photos_raw)
             for photo in photos_raw:
+                if limit_photos is not None and len(photos) >= limit_photos:
+                    break
                 normalized = normalize_downloadable_item(photo, kind="photo")
                 if normalized:
                     photos.append(normalized)
+        elif isinstance(medias_raw, list):
+            photos_count = len(medias_raw)
+            for photo in medias_raw:
                 if limit_photos is not None and len(photos) >= limit_photos:
                     break
+                normalized = normalize_downloadable_item(photo, kind="photo")
+                if normalized:
+                    photos.append(normalized)
+        else:
+            photos_count = 0
+        cover_raw = raw.get("photo") if isinstance(raw.get("photo"), dict) else None
+        cover = normalize_downloadable_item(cover_raw, kind="photo") if cover_raw else None
         item["photos"] = photos
-        item["photos_count"] = len(photos_raw) if isinstance(photos_raw, list) else len(photos)
+        item["photos_count"] = photos_count
+        item["cover"] = cover
+        item["downloadable"] = False
+        item["download_url"] = None
+        item["media_id"] = None
     if kind == "message":
         corps = _pick_str(raw, "corps", "body", "contenu", "content", "message", "texte") or ""
         sender = bool(raw.get("sender", False))
@@ -994,10 +1033,22 @@ def normalize_downloadable_item(
 
 
 def normalize_album_items(albums: list[Any] | None, *, limit: int = 20) -> list[dict[str, Any]]:
-    """Albums + photos imbriquées pour attributs capteur."""
+    """Albums (métadonnées) pour attributs capteur — photos via select + cache."""
     items: list[dict[str, Any]] = []
     for raw in albums or []:
-        item = normalize_downloadable_item(raw, kind="album", limit_photos=10)
+        item = normalize_downloadable_item(raw, kind="album", limit_photos=0)
+        if item:
+            items.append(item)
+        if len(items) >= limit:
+            break
+    return items
+
+
+def normalize_photo_items(photos: list[Any] | None, *, limit: int = 50) -> list[dict[str, Any]]:
+    """Liste de photos d'un album ou d'une actualité."""
+    items: list[dict[str, Any]] = []
+    for raw in photos or []:
+        item = normalize_downloadable_item(raw, kind="photo")
         if item:
             items.append(item)
         if len(items) >= limit:
@@ -1030,6 +1081,7 @@ def normalize_facture_items(factures: list[Any] | None, *, limit: int = 20) -> l
 
 
 def normalize_actualite_items(actualites: Any, *, limit: int = 20) -> list[dict[str, Any]]:
+    """Liste d'actualités (aperçu) — le détail complet est chargé au clic uniquement."""
     raw_list: list[Any]
     if isinstance(actualites, dict):
         raw_list = list(actualites.get("actualites") or actualites.get("items") or [])
@@ -1041,11 +1093,32 @@ def normalize_actualite_items(actualites: Any, *, limit: int = 20) -> list[dict[
     for raw in raw_list:
         if not isinstance(raw, dict):
             continue
+        resume = (
+            _pick_str(raw, "description", "resume", "summary", "contenu", "content", "texte") or ""
+        )
+        # Éviter d'exposer un HTML long dans la liste (le détail va dans read_actualite)
+        if "<" in resume and len(resume) > 200:
+            resume = _pick_str(raw, "description", "resume", "summary") or ""
+        photos_raw = raw.get("photos") if isinstance(raw.get("photos"), list) else []
         item = {
             "id": _pick_id(raw, "id"),
             "titre": _pick_str(raw, "titre", "title", "libelle", "label") or "Actualité",
             "date": _pick_str(raw, "date", "createdAt", "created_at"),
-            "resume": _pick_str(raw, "resume", "summary", "contenu", "content", "texte") or "",
+            "resume": resume,
+            "description": _pick_str(raw, "description") or "",
+            "vues": int(raw["vues"]) if isinstance(raw.get("vues"), int | float) else 0,
+            "commentaires": (
+                int(raw["commentaires"])
+                if isinstance(raw.get("commentaires"), int | float)
+                else (len(raw["commentaires"]) if isinstance(raw.get("commentaires"), list) else 0)
+            ),
+            "nb_photos": (
+                int(raw["nbPhotos"])
+                if isinstance(raw.get("nbPhotos"), int | float)
+                else len(photos_raw)
+            ),
+            "photos": normalize_photo_items(photos_raw),
+            "consultee": bool(raw.get("consultee", False)),
             "downloadable": False,
         }
         item["date_fr"] = format_date_fr(item["date"]) if item["date"] else ""
@@ -1053,6 +1126,40 @@ def normalize_actualite_items(actualites: Any, *, limit: int = 20) -> list[dict[
         if len(items) >= limit:
             break
     return items
+
+
+def normalize_actualite_detail(raw: Any) -> dict[str, Any] | None:
+    """Normalise le détail d'une actualité (après clic / une vue API)."""
+    if not isinstance(raw, dict):
+        return None
+    photos_raw = raw.get("photos") if isinstance(raw.get("photos"), list) else []
+    documents_raw = raw.get("documents") if isinstance(raw.get("documents"), list) else []
+    commentaires_raw = raw.get("commentaires") if isinstance(raw.get("commentaires"), list) else []
+    commentaires: list[dict[str, Any]] = []
+    for c in commentaires_raw:
+        if not isinstance(c, dict):
+            continue
+        commentaires.append(
+            {
+                "id": _pick_id(c, "id"),
+                "famille": _pick_str(c, "famille", "auteur", "nom") or "",
+                "date": _pick_str(c, "date"),
+                "contenu": _pick_str(c, "contenu", "content", "message", "texte") or "",
+            }
+        )
+    item = {
+        "id": _pick_id(raw, "id"),
+        "titre": _pick_str(raw, "titre", "title", "libelle", "label") or "Actualité",
+        "date": _pick_str(raw, "date", "createdAt", "created_at"),
+        "contenu": _pick_str(raw, "contenu", "content", "texte", "description") or "",
+        "vues": int(raw["vues"]) if isinstance(raw.get("vues"), int | float) else 0,
+        "photos": normalize_photo_items(photos_raw),
+        "documents": normalize_document_items(documents_raw),
+        "commentaires": commentaires,
+        "commentaires_count": len(commentaires),
+    }
+    item["date_fr"] = format_date_fr(item["date"]) if item["date"] else ""
+    return item
 
 
 def normalize_message_items(messages: list[Any] | None, *, limit: int = 20) -> list[dict[str, Any]]:

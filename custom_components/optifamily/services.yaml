@@ -63,11 +63,56 @@ set_documents_scope:
       selector:
         text:
 
+set_album:
+  name: Sélectionner un album
+  description: >
+    Affiche les photos d'un album sur le capteur Albums de l'enfant.
+    La liste des photos est mise en cache (pas de re-appel API à chaque affichage).
+  fields:
+    enfant_id:
+      name: Identifiant enfant
+      required: true
+      selector:
+        number:
+          mode: box
+    album_id:
+      name: Identifiant album
+      description: Laisser vide pour désélectionner
+      required: false
+      selector:
+        number:
+          mode: box
+    config_entry_id:
+      name: Entrée OptiFamily (optionnel)
+      required: false
+      selector:
+        text:
+
+read_actualite:
+  name: Lire une actualité
+  description: >
+    Charge le détail d'une actualité au clic. Attention : l'API incrémente une vue.
+    Le détail est mis en cache pour ne pas renvoyer de vues inutiles.
+  fields:
+    id:
+      name: Identifiant actualité
+      required: true
+      selector:
+        text:
+    config_entry_id:
+      name: Entrée OptiFamily (optionnel)
+      required: false
+      selector:
+        text:
+
 download:
   name: Télécharger un média
   description: >
-    Télécharge une photo, un document ou une facture vers config/www/optifamily/
-    (URL /local/optifamily/…). Événement optifamily_download_ready en cas de succès.
+    Télécharge une photo, un document ou une facture vers config/www/optifamily/.
+    Photos albums → www/optifamily/albums/ (/local/optifamily/albums/…).
+    Photos actualités → www/optifamily/actualites/ (/local/optifamily/actualites/…).
+    Documents / factures → www/optifamily/ à la racine. Les photos déjà présentes
+    ne sont pas re-téléchargées. Événement optifamily_download_ready en cas de succès.
   fields:
     kind:
       name: Type
@@ -83,6 +128,15 @@ download:
       required: true
       selector:
         text:
+    source:
+      name: Source photo
+      description: Dossier de destination (albums ou actualites). Détecté auto si omis.
+      required: false
+      selector:
+        select:
+          options:
+            - albums
+            - actualites
     download_url:
       name: URL (optionnel)
       description: Si fournie, utilisée directement

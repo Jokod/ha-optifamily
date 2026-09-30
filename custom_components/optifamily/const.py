@@ -42,8 +42,16 @@ API_ENFANTS = "/api/auth/v3/opti-family/enfants"
 API_PLANNING = "/api/auth/v3/opti-family/enfant/{enfant_id}/planning/{year}/{month}"
 API_TRANSMISSIONS = "/api/auth/v3/opti-family/enfant/{enfant_id}/transmissions/{date}"
 API_ALBUMS = "/api/auth/v3/opti-family/enfant/{enfant_id}/albums"
+API_ALBUM_PHOTOS = (
+    "/api/auth/v3/opti-family/enfant/{enfant_id}/albums/{album_id}/photos/from/{from_}/to/{to}"
+)
+API_PHOTO = "/api/auth/v3/opti-family/photo/{photo_id}/photo"
 API_ACTUALITES = "/api/auth/v3/opti-family/actualites/from/{from_}/to/{to}"
+API_ACTUALITE = "/api/auth/v3/opti-family/actualite/{actualite_id}"
 API_MESSAGES = "/api/auth/v3/opti-family/messages"
+# Pagination albums / actualités (bornes API from/to)
+DEFAULT_ALBUM_PHOTOS_TO = 36
+DEFAULT_ACTUALITES_TO = 20
 API_CRECHE = "/api/auth/v3/opti-family/creche"
 API_DOCUMENTS = "/api/auth/v3/opti-family/documents/creche/{creche_id}"
 API_DOCUMENTS_FAMILLE = "/api/auth/v3/opti-family/documents/famille/{famille_id}"
@@ -122,6 +130,11 @@ def is_update_paused(
         return start_s <= now_s < end_s
     return now_s >= start_s or now_s < end_s
 
+
+# Photos téléchargées (config/www/optifamily/…)
+PHOTO_DIR_ALBUMS = "albums"
+PHOTO_DIR_ACTUALITES = "actualites"
+PHOTO_SOURCES = (PHOTO_DIR_ALBUMS, PHOTO_DIR_ACTUALITES)
 
 # Stockage sécurisé dans le store HA (suffixé par entry_id)
 STORAGE_VERSION = 1

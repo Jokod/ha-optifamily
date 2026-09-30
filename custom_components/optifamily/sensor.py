@@ -33,6 +33,8 @@ from .const import (
     DOCUMENTS_SCOPE_ENFANT,
     DOCUMENTS_SCOPE_FAMILLE,
     DOMAIN,
+    PHOTO_DIR_ACTUALITES,
+    PHOTO_DIR_ALBUMS,
 )
 from .coordinator import OptieFamilyCoordinator, OptieFamilyData
 from .day_context import compute_enfant_day, compute_family_day, format_family_resume
@@ -50,11 +52,13 @@ from .models import (
     get_today_creneaux,
     is_jour_fermeture,
     iter_enfants_enabled,
+    normalize_actualite_detail,
     normalize_actualite_items,
     normalize_album_items,
     normalize_document_items,
     normalize_facture_items,
     normalize_message_items,
+    normalize_photo_items,
     normalize_transmissions,
     transmissions_markdown,
 )
@@ -220,17 +224,6 @@ GLOBAL_SENSORS: tuple[OptieFamilySensorDescription, ...] = (
         attributes_fn=lambda d: _message_sensor_attrs(d, from_me=True),
     ),
     OptieFamilySensorDescription(
-        key="actualites_total",
-        name="Actualités",
-        icon="mdi:newspaper-variant-outline",
-        state_class=SensorStateClass.MEASUREMENT,
-        value_fn=lambda d: d.actualites.get("total", 0),
-        attributes_fn=lambda d: {
-            "items": normalize_actualite_items(d.actualites),
-            "total": d.actualites.get("total", 0),
-        },
-    ),
-    OptieFamilySensorDescription(
         key="documents_total",
         name="Documents",
         icon="mdi:file-document-outline",
@@ -304,6 +297,7 @@ async def async_setup_entry(
     entities.append(OptieFamilyPhaseSensor(coordinator, entry))
     entities.append(OptieFamilyResumeSensor(coordinator, entry))
     entities.append(OptieFamilyDocumentsSensor(coordinator, entry))
+    entities.append(OptieFamilyActualitesSensor(coordinator, entry))
 
     for enfant in _get_enfants(coordinator, entry):
         coordinator.known_enfant_ids.add(enfant.id)
@@ -585,6 +579,78 @@ class OptieFamilyDocumentsSensor(_OptieFamilyBaseSensor):
         }
 
 
+class OptieFamilyActualitesSensor(_OptieFamilyBaseSensor):
+    """Liste des actualités + détail ouvert au clic (évite les vues API inutiles)."""
+
+    _attr_name = "Actualités"
+    _attr_icon = "mdi:newspaper-variant-outline"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator: OptieFamilyCoordinator, entry: ConfigEntry) -> None:
+        super().__init__(coordinator, entry)
+        self._attr_unique_id = f"{entry.entry_id}_actualites_total"
+
+    @property
+    def native_value(self) -> int:
+        data = self.coordinator.data
+        if not data:
+            return 0
+        return int(data.actualites.get("total", 0) or 0)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        data = self.coordinator.data
+        items = normalize_actualite_items(data.actualites if data else {})
+        for item in items:
+            item["photos"] = _with_local_photo_urls(
+                self.coordinator,
+                item.get("photos") or [],
+                source=PHOTO_DIR_ACTUALITES,
+            )
+        selected_id = self.coordinator.selected_actualite_id
+        raw_detail = self.coordinator.get_selected_actualite_detail()
+        detail = normalize_actualite_detail(raw_detail) if raw_detail else None
+        if detail:
+            detail["photos"] = _with_local_photo_urls(
+                self.coordinator,
+                detail.get("photos") or [],
+                source=PHOTO_DIR_ACTUALITES,
+            )
+        return {
+            "optifamily_kind": "actualites_total",
+            **_scope_attrs(self._entry),
+            "items": items,
+            "total": self.native_value,
+            "selected_id": selected_id,
+            "detail": detail,
+            "detail_cached": selected_id is not None
+            and selected_id in self.coordinator.actualite_detail_cache,
+        }
+
+
+def _with_local_photo_urls(
+    coordinator: OptieFamilyCoordinator,
+    photos: list[dict[str, Any]],
+    *,
+    source: str = PHOTO_DIR_ALBUMS,
+) -> list[dict[str, Any]]:
+    """Enrichit les photos avec local_url si déjà téléchargées."""
+    out: list[dict[str, Any]] = []
+    for photo in photos:
+        if not isinstance(photo, dict):
+            continue
+        enriched = dict(photo)
+        pid = enriched.get("id")
+        local = coordinator.get_photo_local_url(pid, source=source) if pid is not None else None
+        if local:
+            enriched["local_url"] = local
+            enriched["cached"] = True
+        else:
+            enriched["cached"] = False
+        out.append(enriched)
+    return out
+
+
 class OptieFamilyLastRefreshSensor(_OptieFamilyBaseSensor):
     """Horodatage du dernier rafraîchissement API réussi."""
 
@@ -849,7 +915,7 @@ class OptieFamilyChildTransmissionsJournalSensor(_ChildSensor):
 
 
 class OptieFamilyChildAlbumsSensor(_ChildSensor):
-    """Nombre d'albums disponibles (+ items riches)."""
+    """Nombre d'albums (+ select album / photos en cache)."""
 
     _attr_name = "Albums"
     _attr_icon = "mdi:image-multiple-outline"
@@ -866,11 +932,20 @@ class OptieFamilyChildAlbumsSensor(_ChildSensor):
 
     @property
     def native_value(self) -> int:
+        if not self.coordinator.data:
+            return 0
         return len(self.coordinator.data.albums.get(self._enfant.id, []))
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        raw = self.coordinator.data.albums.get(self._enfant.id, [])
+        raw = self.coordinator.data.albums.get(self._enfant.id, []) if self.coordinator.data else []
+        selected = self.coordinator.get_selected_album_photos(self._enfant.id)
+        selected_id = selected.get("album_id")
+        selected_photos = _with_local_photo_urls(
+            self.coordinator,
+            normalize_photo_items(selected.get("photos") or []),
+            source=PHOTO_DIR_ALBUMS,
+        )
         return {
             "enfant_id": self._enfant.id,
             "enfant_libelle": self._enfant.libelle,
@@ -878,4 +953,7 @@ class OptieFamilyChildAlbumsSensor(_ChildSensor):
             **_scope_attrs(self._entry),
             "count": self.native_value,
             "items": normalize_album_items(raw),
+            "selected_album_id": selected_id,
+            "selected_total": selected.get("total", 0),
+            "selected_photos": selected_photos,
         }

@@ -76,7 +76,7 @@ Attributs de scope utiles partout : `config_entry_id`, `creche_id`, `creche_name
 | `messages_unread_creche` | nb | `items[]`, `origine=creche` |
 | `messages_unread_me` | nb | `items[]`, `origine=moi` |
 | `creche` | nom | `adresse`, `telephone`, `email`, `description`, `photos`, `collaborateurs` |
-| `actualites_total` | compteur | `items[]` (`titre`, `date`, `resume`) |
+| `actualites_total` | compteur | `items[]` (`titre`, `date`, `resume`, `vues`, `nb_photos`…) ; `selected_id` + `detail` après `read_actualite` |
 | `documents_total` | somme scopes | `creche`, `famille`, `enfants`, `items_*` |
 | `documents` | nb du **scope courant** | `scope`, `enfant_id`, `enfant_libelle`, `items[]` — voir service `set_documents_scope` |
 | `facturation_total` | nb | `items[]` (téléchargeables) |
@@ -90,7 +90,7 @@ Attributs de scope utiles partout : `config_entry_id`, `creche_id`, `creche_name
 | `planning_slots` | nb créneaux du mois | `jours`, `previous`, `next`, `label` |
 | `transmissions` | nb **aujourd’hui** | `items[]`, `lignes`, `markdown`, **`stats`**, `date_fr` |
 | `transmissions_journal` | nb date naviguée | idem + date via services journal |
-| `albums` | nb | `items[]` (album + `photos[]`) |
+| `albums` | nb | `items[]` (métadonnées + couverture) ; `selected_album_id` / `selected_photos[]` après `set_album` |
 
 ### 3.3 Attribut `stats` (transmissions)
 
@@ -133,9 +133,23 @@ Domaine : `optifamily`
 | `set_transmissions_date` | `date?` (YYYY-MM-DD, défaut = aujourd’hui), `config_entry_id?` | Charge le journal |
 | `shift_transmissions_date` | `days` (−30…30), `config_entry_id?` | Décale la date du journal |
 | `set_documents_scope` | `scope` = `creche`\|`famille`\|`enfant`, `enfant_id?` | Filtre le capteur `documents` |
-| `download` | `kind` = `photo`\|`document`\|`facture`, `id`, … | Fichier dans `config/www/optifamily/` → `/local/optifamily/...` |
+| `set_album` | `enfant_id`, `album_id?` | Charge/cache les photos de l’album sélectionné |
+| `read_actualite` | `id` | Charge le détail **au clic** (+1 vue API, puis cache) |
+| `download` | `kind` = `photo`\|`document`\|`facture`, `id`, `source?` = `albums`\|`actualites`, … | Fichier dans `config/www/optifamily/` → `/local/optifamily/...` |
 
 Événements bus (download) : `optifamily_download_ready`, `optifamily_download_failed`.
+
+### Fichiers locaux (`config/www/optifamily/`)
+
+Après un `optifamily.download`, les médias sont accessibles via le serveur HA (`/local/…`) :
+
+| Contenu | Dossier disque | URL HA |
+|---------|----------------|--------|
+| Photos d’**albums** | `config/www/optifamily/albums/` | `/local/optifamily/albums/{id}.jpg` |
+| Photos d’**actualités** | `config/www/optifamily/actualites/` | `/local/optifamily/actualites/{id}.jpg` |
+| Documents / factures | `config/www/optifamily/` | `/local/optifamily/document_….pdf` |
+
+Un fichier déjà présent n’est **pas** re-téléchargé depuis l’API. Les attributs capteur exposent `local_url` / `cached` lorsqu’une photo est indexée.
 
 ---
 
